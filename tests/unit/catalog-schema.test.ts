@@ -117,29 +117,29 @@ describe("generic product editor schemas", () => {
 		).toBe(true);
 	});
 
-	it.each([
-		"stock",
-		"automation",
-	] as const)("does not allow an access limit for %s delivery", (type) => {
-		const delivery = {
-			type,
-			durationMs: null,
-			usageLimit: null,
-			accessLimit: 1,
-			renewalMode: "disabled" as const,
-			emailMode: "link" as const,
-			showOnOrderPage: true,
-			allowResend: true,
-			lowStockThreshold: 0,
-		};
-		expect(
-			productSellableItemsInputSchema.safeParse({
-				productId,
-				expectedRevision: 1,
-				sellableItems: [sellableItem("Limited", componentId, delivery)],
-			}).success,
-		).toBe(false);
-	});
+	it.each(["stock", "automation"] as const)(
+		"does not allow an access limit for %s delivery",
+		(type) => {
+			const delivery = {
+				type,
+				durationMs: null,
+				usageLimit: null,
+				accessLimit: 1,
+				renewalMode: "disabled" as const,
+				emailMode: "link" as const,
+				showOnOrderPage: true,
+				allowResend: true,
+				lowStockThreshold: 0,
+			};
+			expect(
+				productSellableItemsInputSchema.safeParse({
+					productId,
+					expectedRevision: 1,
+					sellableItems: [sellableItem("Limited", componentId, delivery)],
+				}).success,
+			).toBe(false);
+		},
+	);
 
 	it("only exposes service usage quota for automation delivery", () => {
 		const delivery = {

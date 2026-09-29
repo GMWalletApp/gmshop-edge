@@ -121,35 +121,38 @@ describe("catalog publish checks", { timeout: 30_000 }, () => {
 			BUILD_PRODUCT_ID,
 			BUILD_COMPONENT_ID,
 		],
-	] as const)("requires operational configuration for %s products", async (type, blocker, productId, componentId) => {
-		await seedConfiguredDeliveryProduct(db, productId, componentId, type);
-		const incomplete = await checkProduct(
-			{ db: { $client: db } } as never,
-			productId,
-		);
-		expect(incomplete.blockers.map((issue) => issue.code)).toContain(blocker);
-
-		await completeDeliveryConfiguration(db, productId, componentId, type);
-		const ready = await checkProduct(
-			{ db: { $client: db } } as never,
-			productId,
-		);
-		expect(ready.blockers).toEqual([]);
-		if (type === "automation") {
-			await db
-				.prepare(
-					"DELETE FROM system_settings WHERE key = 'runtime.automation_callback_secret'",
-				)
-				.run();
-			const missingCallback = await checkProduct(
+	] as const)(
+		"requires operational configuration for %s products",
+		async (type, blocker, productId, componentId) => {
+			await seedConfiguredDeliveryProduct(db, productId, componentId, type);
+			const incomplete = await checkProduct(
 				{ db: { $client: db } } as never,
 				productId,
 			);
-			expect(missingCallback.blockers.map((issue) => issue.code)).toContain(
-				"automation_configuration_missing",
+			expect(incomplete.blockers.map((issue) => issue.code)).toContain(blocker);
+
+			await completeDeliveryConfiguration(db, productId, componentId, type);
+			const ready = await checkProduct(
+				{ db: { $client: db } } as never,
+				productId,
 			);
-		}
-	});
+			expect(ready.blockers).toEqual([]);
+			if (type === "automation") {
+				await db
+					.prepare(
+						"DELETE FROM system_settings WHERE key = 'runtime.automation_callback_secret'",
+					)
+					.run();
+				const missingCallback = await checkProduct(
+					{ db: { $client: db } } as never,
+					productId,
+				);
+				expect(missingCallback.blockers.map((issue) => issue.code)).toContain(
+					"automation_configuration_missing",
+				);
+			}
+		},
+	);
 });
 
 const DOWNLOAD_PRODUCT_ID = "11111111-1111-4111-8111-111111111110";

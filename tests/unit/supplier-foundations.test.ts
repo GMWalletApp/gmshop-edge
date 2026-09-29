@@ -176,17 +176,14 @@ describe("supplier money", () => {
 		expect(markupMinor("101", "7", 500)).toBe("114");
 	});
 
-	it.each([
-		"-1",
-		"1.234",
-		"1e2",
-		"01",
-		"NaN",
-	])("rejects invalid provider money %s", (value) => {
-		expect(() => decimalToMinor(value, 2)).toThrow(
-			"Supplier returned an invalid monetary value",
-		);
-	});
+	it.each(["-1", "1.234", "1e2", "01", "NaN"])(
+		"rejects invalid provider money %s",
+		(value) => {
+			expect(() => decimalToMinor(value, 2)).toThrow(
+				"Supplier returned an invalid monetary value",
+			);
+		},
+	);
 });
 
 describe("supplier credential vault", () => {

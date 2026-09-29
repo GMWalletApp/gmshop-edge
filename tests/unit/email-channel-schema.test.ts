@@ -19,15 +19,14 @@ const baseConfig = {
 };
 
 describe("email channel configuration", () => {
-	it.each([
-		"resend",
-		"postmark",
-		"sendgrid",
-	] as const)("accepts the %s HTTP provider", (provider) => {
-		expect(
-			emailChannelConfigSchema.safeParse({ ...baseConfig, provider }).success,
-		).toBe(true);
-	});
+	it.each(["resend", "postmark", "sendgrid"] as const)(
+		"accepts the %s HTTP provider",
+		(provider) => {
+			expect(
+				emailChannelConfigSchema.safeParse({ ...baseConfig, provider }).success,
+			).toBe(true);
+		},
+	);
 
 	it("accepts Cloudflare Email without API key or SMTP fields", () => {
 		expect(

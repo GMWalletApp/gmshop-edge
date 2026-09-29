@@ -99,4 +99,27 @@ describe("project automation webhook", () => {
 		expect(request.payload.dryRun).toBe(true);
 		expect(request.payload.context.test).toBe(true);
 	});
+
+	test("bounds large GitHub context before dispatch", async () => {
+		const hugeBody = "x".repeat(200_000);
+		const request = await runWebhook("pull_request_target", {
+			trigger: {
+				pullRequest: { number: 42, title: "Dependency update", body: hugeBody },
+			},
+			openIssues: Array.from({ length: 100 }, (_, index) => ({
+				number: index + 1,
+				title: `Issue ${index + 1}`,
+				body: hugeBody,
+				url: `https://example.test/issues/${index + 1}`,
+			})),
+			openPullRequests: [],
+		});
+
+		expect(Buffer.byteLength(request.body)).toBeLessThanOrEqual(32 * 1024);
+		expect(request.payload.context.trigger.pullRequest.number).toBe(42);
+		expect(request.payload.context.trigger.pullRequest.body).toEndWith(
+			"\n[truncated]",
+		);
+		expect(request.payload.context.openIssues[0]).not.toHaveProperty("body");
+	});
 });

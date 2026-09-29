@@ -84,16 +84,19 @@ describe("Cryptomus payment provider", () => {
 		["cancel", "expired"],
 		["confirm_check", "pending"],
 		["future_status", "pending"],
-	] as const)("maps queried %s status to %s", async (paymentStatus, expected) => {
-		const fetcher = vi.fn(async () => invoiceResponse(paymentStatus));
-		await expect(
-			cryptomusPaymentProvider.queryPayment(
-				"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-				credential,
-				fetcher,
-			),
-		).resolves.toMatchObject({ status: expected, currency: "CNY" });
-	});
+	] as const)(
+		"maps queried %s status to %s",
+		async (paymentStatus, expected) => {
+			const fetcher = vi.fn(async () => invoiceResponse(paymentStatus));
+			await expect(
+				cryptomusPaymentProvider.queryPayment(
+					"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+					credential,
+					fetcher,
+				),
+			).resolves.toMatchObject({ status: expected, currency: "CNY" });
+		},
+	);
 
 	it("rejects a query response for a different invoice", async () => {
 		const fetcher = vi.fn(async () => {

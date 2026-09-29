@@ -108,24 +108,22 @@ describe("request authority policy", () => {
 		error.mockRestore();
 	});
 
-	it.each([
-		"not-json",
-		"{}",
-		'["pay.example",1]',
-		'["https://pay.example"]',
-	])("fails closed for corrupt Allowed Hosts data: %s", async (value) => {
-		const error = vi.spyOn(console, "error").mockImplementation(() => {});
-		const response = await validateRequestAuthority(
-			new Request("https://pay.example/admin"),
-			database({ "security.allowed_hosts": value }),
-		);
+	it.each(["not-json", "{}", '["pay.example",1]', '["https://pay.example"]'])(
+		"fails closed for corrupt Allowed Hosts data: %s",
+		async (value) => {
+			const error = vi.spyOn(console, "error").mockImplementation(() => {});
+			const response = await validateRequestAuthority(
+				new Request("https://pay.example/admin"),
+				database({ "security.allowed_hosts": value }),
+			);
 
-		expect(response?.status).toBe(503);
-		expect(await response?.text()).toBe("Service Unavailable");
-		expect(error).toHaveBeenCalledWith(
-			JSON.stringify({ event: "request_authority_unavailable" }),
-		);
-		expect(error.mock.calls.flat().join(" ")).not.toContain(value);
-		error.mockRestore();
-	});
+			expect(response?.status).toBe(503);
+			expect(await response?.text()).toBe("Service Unavailable");
+			expect(error).toHaveBeenCalledWith(
+				JSON.stringify({ event: "request_authority_unavailable" }),
+			);
+			expect(error.mock.calls.flat().join(" ")).not.toContain(value);
+			error.mockRestore();
+		},
+	);
 });

@@ -462,19 +462,16 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 }
 
 /**
- * D1-authoritative Better Auth rate-limit storage. Better Auth 1.6 calls
- * `consume` for the whole check-and-increment when it is present and only
- * falls back to the non-atomic `get`/`set` pair for storages without it, so
- * those two stay inert and the fixed-window counter is the single source of
- * truth shared by every isolate.
+ * D1-authoritative Better Auth rate-limit storage. Better Auth now requires
+ * custom storage to expose the atomic `consume` operation directly, so the
+ * fixed-window counter remains the single source of truth shared by every
+ * isolate.
  */
 export function createAuthRateLimitStorage(
 	database: D1Database,
 	now: () => number = Date.now,
 ): BetterAuthRateLimitStorage {
 	return {
-		get: async () => null,
-		set: async () => {},
 		consume: async (key, rule) => {
 			const windowMs = rule.window * 1_000;
 			const claimedAt = now();
@@ -681,6 +678,15 @@ function telegramOidcBetterAuthPlugin(
 	});
 	const telegramProvider = {
 		...baseProvider,
+		accountSubject: ({ profile }: { profile: object }) => {
+			if (
+				!("sub" in profile) ||
+				typeof profile.sub !== "string" ||
+				!profile.sub
+			)
+				throw new Error("Telegram OIDC subject is invalid");
+			return profile.sub;
+		},
 		async createAuthorizationURL(
 			input: Parameters<typeof baseProvider.createAuthorizationURL>[0],
 		) {

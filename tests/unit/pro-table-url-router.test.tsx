@@ -56,6 +56,8 @@ describe("ProTable router URL state", () => {
 
 		await act(async () => {
 			root.render(<RouterProvider router={router} />);
+		});
+		await act(async () => {
 			await new Promise((resolve) => setTimeout(resolve, 75));
 		});
 

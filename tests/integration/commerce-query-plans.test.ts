@@ -54,14 +54,17 @@ describe("commerce hot-query plans and rows read", () => {
 			 ORDER BY created_at, id LIMIT 10`,
 			"outbox_events_status_attempt_idx",
 		],
-	] as const)("uses the %s index without a temporary sort", async (_name, sql, index) => {
-		const details = await explain(db, sql);
-		expect(details).toContain(index);
-		expect(details).not.toContain("USE TEMP B-TREE");
-		const rows = await db.prepare(sql).all<{ id: string }>();
-		expect(rows.results).toHaveLength(10);
-		expect(rows.meta.rows_read).toBeLessThanOrEqual(10);
-	});
+	] as const)(
+		"uses the %s index without a temporary sort",
+		async (_name, sql, index) => {
+			const details = await explain(db, sql);
+			expect(details).toContain(index);
+			expect(details).not.toContain("USE TEMP B-TREE");
+			const rows = await db.prepare(sql).all<{ id: string }>();
+			expect(rows.results).toHaveLength(10);
+			expect(rows.meta.rows_read).toBeLessThanOrEqual(10);
+		},
+	);
 
 	it("has covering indexes for customer entitlements and build queue polling", async () => {
 		const entitlement = await explain(

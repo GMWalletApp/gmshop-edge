@@ -110,35 +110,34 @@ describe("shop payment providers", () => {
 		});
 	});
 
-	it.each([
-		"pending",
-		"confirming",
-		"partially_paid",
-	] as const)("keeps GMPay %s callbacks pending instead of failing the payment", async (status) => {
-		const params = {
-			pid: "1000",
-			trade_id: `trade-gmpay-${status}`,
-			order_id: "11111111111141118111111111111111",
-			amount: "12.345",
-			actual_amount: status === "partially_paid" ? "1.2" : "0",
-			block_transaction_id: "",
-			status,
-		};
-		const body = JSON.stringify({
-			...params,
-			signature: await signGmpay(params, "epusdt_secret_key"),
-		});
-		await expect(
-			gmpayPaymentProvider.parseWebhook(
-				new Request("https://shop.example/webhook", {
-					method: "POST",
-					headers: { "content-type": "application/json" },
-					body,
-				}),
-				epusdtCredential(),
-			),
-		).resolves.toMatchObject({ type: "payment_pending" });
-	});
+	it.each(["pending", "confirming", "partially_paid"] as const)(
+		"keeps GMPay %s callbacks pending instead of failing the payment",
+		async (status) => {
+			const params = {
+				pid: "1000",
+				trade_id: `trade-gmpay-${status}`,
+				order_id: "11111111111141118111111111111111",
+				amount: "12.345",
+				actual_amount: status === "partially_paid" ? "1.2" : "0",
+				block_transaction_id: "",
+				status,
+			};
+			const body = JSON.stringify({
+				...params,
+				signature: await signGmpay(params, "epusdt_secret_key"),
+			});
+			await expect(
+				gmpayPaymentProvider.parseWebhook(
+					new Request("https://shop.example/webhook", {
+						method: "POST",
+						headers: { "content-type": "application/json" },
+						body,
+					}),
+					epusdtCredential(),
+				),
+			).resolves.toMatchObject({ type: "payment_pending" });
+		},
+	);
 
 	it("gives a confirming and a paid GMPay notification for one transaction distinct event ids", async () => {
 		const ids = new Set<string>();

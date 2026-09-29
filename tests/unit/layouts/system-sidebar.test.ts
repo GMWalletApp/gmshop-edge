@@ -70,14 +70,17 @@ describe("GMShop admin navigation", () => {
 			systemPermission("operations", "read"),
 			["/admin/operations/queues", "/admin/operations/scheduled"],
 		],
-	] as const)("projects only permitted destinations for %j", (permission, expected) => {
-		expect(urls([permission])).toEqual(expected);
-		expect(
-			commandMenuGroups(systemSidebarData([permission])).flatMap((group) =>
-				group.items.map((item) => String(item.url)),
-			),
-		).toEqual(expected);
-	});
+	] as const)(
+		"projects only permitted destinations for %j",
+		(permission, expected) => {
+			expect(urls([permission])).toEqual(expected);
+			expect(
+				commandMenuGroups(systemSidebarData([permission])).flatMap((group) =>
+					group.items.map((item) => String(item.url)),
+				),
+			).toEqual(expected);
+		},
+	);
 
 	it("shares one authority between module navigation and route access", () => {
 		const permissions = [
