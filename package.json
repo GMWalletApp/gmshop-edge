@@ -107,7 +107,7 @@
     "@tma.js/sdk": "^3.3.0",
     "@visulima/email": "^2.1.7",
     "better-auth": "^1.7.6",
-    "better-auth-telegram": "1.5.0",
+    "better-auth-telegram": "2.0.1",
     "bowser": "^2.14.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
