@@ -92,7 +92,7 @@
     "@shikijs/monaco": "^4.4.3",
     "@shikijs/themes": "^4.4.3",
     "@tailwindcss/vite": "^4.3.3",
-    "@tanstack/match-sorter-utils": "^8.19.4",
+    "@tanstack/match-sorter-utils": "^9.1.2",
     "@tanstack/react-devtools": "^0.10.13",
     "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-query": "^5.104.0",
