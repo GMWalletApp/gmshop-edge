@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DomainError } from "#/lib/domain-error";
+import { clientIp } from "#/server/client-ip";
 
 const assetInputSchema = z.object({
 	productId: z.uuid(),
@@ -117,7 +118,7 @@ export async function createDownloadAsset(
 					input.actorUserId,
 					id,
 					input.request?.headers.get("x-request-id") ?? null,
-					input.request?.headers.get("cf-connecting-ip") ?? null,
+					clientIp(input.request),
 					JSON.stringify({
 						productId: data.productId,
 						componentId: data.componentId,

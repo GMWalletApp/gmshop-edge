@@ -84,7 +84,7 @@ describe("store-owned fiat exchange rates", () => {
 		});
 	});
 
-	it("keeps every maintained currency selectable even when refresh is overdue", async () => {
+	it("withdraws a payment currency once its rate has passed the validity horizon", async () => {
 		await db
 			.prepare(
 				"UPDATE exchange_rates SET expires_at = 1500 WHERE id = 'cny-usd'",
@@ -96,9 +96,18 @@ describe("store-owned fiat exchange rates", () => {
 				currency: "CNY",
 				currencyDecimals: 2,
 				paymentCurrency: "USD",
-				now: 2000,
+				now: 1499,
 			}),
 		).resolves.toMatchObject({ amountMinor: "1400", rateId: "cny-usd" });
+		await expect(
+			quotePaymentCurrency(db, {
+				amountMinor: "10000",
+				currency: "CNY",
+				currencyDecimals: 2,
+				paymentCurrency: "USD",
+				now: 2000,
+			}),
+		).rejects.toMatchObject({ code: "exchange_rate_unavailable" });
 		await db
 			.prepare(
 				"UPDATE exchange_rates SET expires_at = NULL WHERE id = 'cny-usd'",

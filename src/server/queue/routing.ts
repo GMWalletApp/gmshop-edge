@@ -3,6 +3,7 @@ import { processDelivery } from "#/features/fulfillment/server/process";
 import { processNotificationDelivery } from "#/features/notifications/server/delivery";
 import { processShopRefund } from "#/features/shop-payments/server/refunds";
 import { processSupplierOrder } from "#/features/suppliers/server/process";
+import { DomainError } from "#/lib/domain-error";
 import type { CommerceQueueMessage } from "#/server/queue/types";
 
 export async function handleQueue(
@@ -66,9 +67,58 @@ async function processMessage(
 		await processQueueMessage(message.body, env);
 		message.ack();
 		return "completed";
-	} catch {
+	} catch (error) {
+		if (error instanceof DomainError && isPermanentFailure(error)) {
+			// Domain rejections (record already in a terminal state, requires an
+			// operator, invalid subject) cannot succeed on retry; record them and
+			// acknowledge so the message never dead-letters.
+			await db
+				.prepare(
+					`INSERT INTO audit_logs
+					 (id, action, target_type, target_id, after, created_at)
+					 VALUES (?, 'queue.message_failed', 'queue_message', ?, ?, ?)`,
+				)
+				.bind(
+					crypto.randomUUID(),
+					queueMessageReference(message.body),
+					JSON.stringify({
+						kind: message.body.kind,
+						code: error.code,
+						attempts: message.attempts,
+					}),
+					Date.now(),
+				)
+				.run();
+			message.ack();
+			return "rejected";
+		}
 		message.retry({ delaySeconds: retryDelaySeconds(message.attempts) });
 		return "retried";
+	}
+}
+
+/**
+ * A domain error is permanent when the code that raised it says another
+ * attempt cannot succeed (`retryable: false`, the default for 4xx rejections);
+ * outages, lease and optimistic-concurrency conflicts declare themselves
+ * retryable at the throw site, and unknown errors are always retried.
+ */
+export function isPermanentFailure(error: unknown) {
+	return error instanceof DomainError && !error.retryable;
+}
+
+function queueMessageReference(body: CommerceQueueMessage) {
+	switch (body.kind) {
+		case "commerce.delivery":
+			return body.deliveryId;
+		case "commerce.automation":
+			return body.automationJobId;
+		case "commerce.notification":
+			return body.notificationDeliveryId;
+		case "commerce.refund":
+			return body.refundId;
+		case "commerce.supplier":
+			return body.supplierOrderId;
 	}
 }
 

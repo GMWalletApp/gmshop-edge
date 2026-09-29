@@ -1,11 +1,13 @@
 import { z } from "zod";
 import {
 	type PaymentProviderAdapter,
+	type PaymentWebhookEvent,
 	wechatCredentialSchema,
 } from "#/features/shop-payments/provider";
 import { sha256Hex } from "#/features/shop-payments/signature";
 import { DomainError } from "#/lib/domain-error";
 import { base64ToBytes, rsaSha256Sign, rsaSha256Verify } from "./rsa";
+import { shanghaiDateTimeParts } from "./shanghai-time";
 import { readPaymentWebhookText } from "./webhook-body";
 
 const apiOrigin = "https://api.mch.weixin.qq.com";
@@ -65,7 +67,7 @@ export function createWechatPayProvider(
 					"WeChat H5 payment requires a client IP address",
 				);
 			const outTradeNo = compactId(input.attemptId);
-			const expiresAt = Date.now() + 30 * 60_000;
+			const expiresAt = wechatExpiry(input.expiresAt ?? null);
 			const result = await wechatRequest(
 				credential,
 				"POST",
@@ -75,7 +77,7 @@ export function createWechatPayProvider(
 					mchid: credential.mchId,
 					description: input.description.slice(0, 127),
 					out_trade_no: outTradeNo,
-					time_expire: new Date(expiresAt).toISOString(),
+					time_expire: wechatTimestamp(new Date(expiresAt)),
 					notify_url: input.webhookUrl,
 					amount: {
 						total: Number(assertSafeMinor(input.amountMinor)),
@@ -143,6 +145,16 @@ export function createWechatPayProvider(
 			const body = await readPaymentWebhookText(request);
 			await verifyWechatSignature(request.headers, body, credential);
 			const notification = notificationSchema.parse(JSON.parse(body));
+			// Refund and other notification types are acknowledged without acting.
+			if (notification.event_type !== "TRANSACTION.SUCCESS")
+				return {
+					providerEventId: notification.id,
+					providerPaymentId: "",
+					type: "payment_ignored",
+					amountMinor: null,
+					currency: null,
+					payloadDigest: await sha256Hex(body),
+				};
 			const order = orderSchema.parse(
 				JSON.parse(
 					await decryptWechatResource(
@@ -160,12 +172,7 @@ export function createWechatPayProvider(
 			return {
 				providerEventId: notification.id,
 				providerPaymentId: order.out_trade_no,
-				type:
-					order.trade_state === "SUCCESS"
-						? "payment_succeeded"
-						: order.trade_state === "CLOSED"
-							? "payment_expired"
-							: "payment_failed",
+				type: wechatEventType(order.trade_state),
 				amountMinor: order.amount.total.toString(),
 				currency: order.amount.currency.toUpperCase(),
 				merchantOrderId: order.out_trade_no,
@@ -393,6 +400,39 @@ function safeJson(value: string) {
 
 function compactId(value: string) {
 	return value.replaceAll("-", "").slice(0, 32);
+}
+
+// WeChat Pay requires the expiry to be more than one minute ahead; the order
+// expiry is used when it is known, otherwise 30 minutes.
+function wechatExpiry(expiresAt: number | null, now = Date.now()) {
+	const requested = expiresAt ?? now + 30 * 60_000;
+	return Math.max(requested, now + 2 * 60_000);
+}
+
+// yyyy-MM-DDTHH:mm:ss+08:00 (RFC 3339 without fractional seconds), as documented.
+function wechatTimestamp(date: Date) {
+	const value = shanghaiDateTimeParts(date);
+	return `${value.year}-${value.month}-${value.day}T${value.hour}:${value.minute}:${value.second}+08:00`;
+}
+
+function wechatEventType(
+	tradeState: z.output<typeof orderSchema>["trade_state"],
+): PaymentWebhookEvent["type"] {
+	switch (tradeState) {
+		case "SUCCESS":
+			return "payment_succeeded";
+		case "CLOSED":
+		case "REVOKED":
+			return "payment_expired";
+		case "PAYERROR":
+			return "payment_failed";
+		case "REFUND":
+			// Refunds are reconciled through the refund flow, never as a payment.
+			return "payment_ignored";
+		default:
+			// NOTPAY / USERPAYING: the payment is still in progress.
+			return "payment_pending";
+	}
 }
 
 function assertSafeMinor(value: string) {

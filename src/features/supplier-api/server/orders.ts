@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import { decryptDeliveryContent } from "#/features/fulfillment/secrets";
+import { orderStateGuard } from "#/features/shop-orders/server/order-guard";
 import { completeWalletStoreOrder } from "#/features/shop-payments/server/service";
-import { mutateWallet } from "#/features/wallet/server/ledger";
+import {
+	findWalletEntry,
+	loadWalletSnapshot,
+	mutateWallet,
+	walletMutationStatements,
+} from "#/features/wallet/server/ledger";
 import { DomainError } from "#/lib/domain-error";
 import { isSafeWebhookUrl } from "#/lib/webhook-url";
 import { loadRuntimeConfig } from "#/server/runtime-config";
@@ -13,6 +19,15 @@ type OrderInput = {
 	downstreamOrderNo: string;
 	callbackUrl?: string | null;
 	traceId?: string;
+};
+
+type ExistingApiOrder = {
+	id: string;
+	request_digest: string;
+	state: string;
+	shop_order_id: string;
+	order_status: string;
+	delivery_status: string | null;
 };
 
 export async function createSupplierApiOrder(
@@ -30,12 +45,11 @@ export async function createSupplierApiOrder(
 	const digest = createHash("sha256")
 		.update(JSON.stringify(input))
 		.digest("hex");
-	const existing = await db
-		.prepare(
-			"SELECT id, request_digest FROM supplier_api_orders WHERE user_id = ? AND downstream_order_no = ? LIMIT 1",
-		)
-		.bind(identity.userId, input.downstreamOrderNo)
-		.first<{ id: string; request_digest: string }>();
+	const existing = await loadExistingApiOrder(
+		db,
+		identity.userId,
+		input.downstreamOrderNo,
+	);
 	if (existing) {
 		if (existing.request_digest !== digest)
 			throw new DomainError(
@@ -43,7 +57,7 @@ export async function createSupplierApiOrder(
 				409,
 				"Order number was reused",
 			);
-		return { ok: true, order_id: existing.id, status: "processing" };
+		return settleReplayedApiOrder(db, identity, existing);
 	}
 	const item = await db
 		.prepare(
@@ -84,6 +98,15 @@ export async function createSupplierApiOrder(
 			"Insufficient stock",
 		);
 	const total = (BigInt(item.price_minor) * BigInt(input.quantity)).toString();
+	// Refuse early when the balance cannot cover the order so no order rows are
+	// created for a purchase that can never be paid.
+	const balance = await loadWalletSnapshot(db, identity.userId);
+	if (BigInt(balance.balanceMinor) < BigInt(total))
+		throw new DomainError(
+			"wallet_insufficient_balance",
+			409,
+			"Insufficient balance",
+		);
 	const orderId = crypto.randomUUID();
 	const orderItemId = crypto.randomUUID();
 	const apiOrderId = crypto.randomUUID();
@@ -148,20 +171,134 @@ export async function createSupplierApiOrder(
 				)
 				.bind(crypto.randomUUID(), orderId, now),
 		]);
-		await completeWalletStoreOrder(db, { orderId, userId: identity.userId });
-		return { ok: true, order_id: apiOrderId, status: "processing" };
 	} catch (error) {
 		if (error instanceof DomainError) throw error;
-		const replay = await db
-			.prepare(
-				"SELECT id, request_digest FROM supplier_api_orders WHERE user_id = ? AND downstream_order_no = ? LIMIT 1",
-			)
-			.bind(identity.userId, input.downstreamOrderNo)
-			.first<{ id: string; request_digest: string }>();
+		const replay = await loadExistingApiOrder(
+			db,
+			identity.userId,
+			input.downstreamOrderNo,
+		);
 		if (replay?.request_digest === digest)
-			return { ok: true, order_id: replay.id, status: "processing" };
+			return settleReplayedApiOrder(db, identity, replay);
 		throw error;
 	}
+	return payApiOrder(db, identity.userId, apiOrderId, orderId);
+}
+
+async function loadExistingApiOrder(
+	db: D1Database,
+	userId: string,
+	downstreamOrderNo: string,
+) {
+	return db
+		.prepare(
+			`SELECT api.id, api.request_digest, api.state, api.shop_order_id,
+			 shop_order.status AS order_status, delivery.status AS delivery_status
+			 FROM supplier_api_orders api
+			 JOIN shop_orders shop_order ON shop_order.id = api.shop_order_id
+			 LEFT JOIN shop_order_items item ON item.order_id = shop_order.id
+			 LEFT JOIN delivery_records delivery ON delivery.order_item_id = item.id
+			 WHERE api.user_id = ? AND api.downstream_order_no = ? LIMIT 1`,
+		)
+		.bind(userId, downstreamOrderNo)
+		.first<ExistingApiOrder>();
+}
+
+/**
+ * A replayed creation is idempotent: an order whose wallet debit never
+ * happened (crash or transient failure between the two steps) is paid now,
+ * everything else reports its current state.
+ */
+async function settleReplayedApiOrder(
+	db: D1Database,
+	identity: SupplierApiIdentity,
+	existing: ExistingApiOrder,
+) {
+	if (
+		existing.state === "processing" &&
+		existing.order_status === "pending_payment"
+	)
+		return payApiOrder(
+			db,
+			identity.userId,
+			existing.id,
+			existing.shop_order_id,
+		);
+	return {
+		ok: true,
+		order_id: existing.id,
+		status: presentApiState(
+			existing.state,
+			existing.order_status,
+			existing.delivery_status,
+		),
+	};
+}
+
+/**
+ * Debit the wallet and start fulfillment. When the debit is refused the API
+ * order and the shop order are closed explicitly so the reseller never sees a
+ * "processing" order that will never be supplied.
+ */
+async function payApiOrder(
+	db: D1Database,
+	userId: string,
+	apiOrderId: string,
+	orderId: string,
+) {
+	try {
+		await completeWalletStoreOrder(db, { orderId, userId });
+	} catch (error) {
+		if (!(error instanceof DomainError)) throw error;
+		if (error.code === "order_version_conflict") throw error;
+		const now = Date.now();
+		await db.batch([
+			db
+				.prepare(
+					`UPDATE shop_orders SET status = 'failed', version = version + 1, updated_at = ?
+					 WHERE id = ? AND status = 'pending_payment'`,
+				)
+				.bind(now, orderId),
+			db
+				.prepare(
+					`INSERT INTO shop_order_events
+					 (id, order_id, event_type, visibility, from_status, to_status, order_version, note, actor_type, created_at)
+					 SELECT ?, id, 'status_changed', 'internal', 'pending_payment', 'failed', version, ?, 'system', ?
+					 FROM shop_orders WHERE id = ? AND status = 'failed'`,
+				)
+				.bind(crypto.randomUUID(), error.code, now, orderId),
+			db
+				.prepare(
+					`UPDATE supplier_api_orders SET state = 'failed', updated_at = ?
+					 WHERE id = ? AND state = 'processing'`,
+				)
+				.bind(now, apiOrderId),
+		]);
+		throw error;
+	}
+	return { ok: true, order_id: apiOrderId, status: "processing" };
+}
+
+/**
+ * The reseller-visible state, derived once from the API order, the shop order
+ * and its delivery so every read path agrees.
+ */
+function presentApiState(
+	state: string,
+	orderStatus: string,
+	deliveryStatus: string | null,
+) {
+	if (state === "supplied" || state === "cancelled" || state === "failed")
+		return state;
+	if (orderStatus === "cancelled" || orderStatus === "refunded")
+		return "cancelled";
+	if (
+		orderStatus === "failed" ||
+		orderStatus === "expired" ||
+		deliveryStatus === "failed"
+	)
+		return "failed";
+	return "processing";
 }
 
 export async function getSupplierApiOrder(
@@ -171,7 +308,7 @@ export async function getSupplierApiOrder(
 ) {
 	const row = await db
 		.prepare(
-			`SELECT api.id, api.state, order.status AS order_status, delivery.status AS delivery_status, delivery.content_encrypted FROM supplier_api_orders api JOIN shop_orders order ON order.id = api.shop_order_id LEFT JOIN shop_order_items item ON item.order_id = order.id LEFT JOIN delivery_records delivery ON delivery.order_item_id = item.id WHERE api.id = ? AND api.user_id = ? LIMIT 1`,
+			`SELECT api.id, api.state, shop_order.status AS order_status, delivery.status AS delivery_status, delivery.content_encrypted FROM supplier_api_orders api JOIN shop_orders shop_order ON shop_order.id = api.shop_order_id LEFT JOIN shop_order_items item ON item.order_id = shop_order.id LEFT JOIN delivery_records delivery ON delivery.order_item_id = item.id WHERE api.id = ? AND api.user_id = ? LIMIT 1`,
 		)
 		.bind(id, userId)
 		.first<{
@@ -207,9 +344,10 @@ export async function getSupplierApiOrder(
 			cards: content.split(/\r?\n/).filter(Boolean),
 		};
 	}
-	if (row.delivery_status === "failed" || row.order_status === "failed")
-		return { order_id: row.id, status: "failed" };
-	return { order_id: row.id, status: row.state };
+	return {
+		order_id: row.id,
+		status: presentApiState(row.state, row.order_status, row.delivery_status),
+	};
 }
 
 export async function cancelSupplierApiOrder(
@@ -219,7 +357,7 @@ export async function cancelSupplierApiOrder(
 ) {
 	const row = await db
 		.prepare(
-			`SELECT api.id, api.state, api.shop_order_id, order.status, order.total_minor, order.currency, item.id AS order_item_id, delivery.id AS delivery_id, delivery.status AS delivery_status FROM supplier_api_orders api JOIN shop_orders order ON order.id = api.shop_order_id JOIN shop_order_items item ON item.order_id = order.id LEFT JOIN delivery_records delivery ON delivery.order_item_id = item.id WHERE api.id = ? AND api.user_id = ? LIMIT 1`,
+			`SELECT api.id, api.state, api.shop_order_id, shop_order.status, shop_order.version, shop_order.total_minor, shop_order.currency, item.id AS order_item_id, delivery.id AS delivery_id, delivery.status AS delivery_status FROM supplier_api_orders api JOIN shop_orders shop_order ON shop_order.id = api.shop_order_id JOIN shop_order_items item ON item.order_id = shop_order.id LEFT JOIN delivery_records delivery ON delivery.order_item_id = item.id WHERE api.id = ? AND api.user_id = ? LIMIT 1`,
 		)
 		.bind(id, userId)
 		.first<{
@@ -227,6 +365,7 @@ export async function cancelSupplierApiOrder(
 			state: string;
 			shop_order_id: string;
 			status: string;
+			version: number;
 			total_minor: string;
 			currency: string;
 			order_item_id: string;
@@ -235,9 +374,25 @@ export async function cancelSupplierApiOrder(
 		}>();
 	if (!row)
 		throw new DomainError("supplier_order_not_found", 404, "Order not found");
-	if (row.state === "cancelled")
+	const refund = {
+		userId,
+		direction: "credit" as const,
+		amountMinor: row.total_minor,
+		currency: row.currency,
+		sourceType: "refund" as const,
+		sourceId: row.shop_order_id,
+		idempotencyKey: `supplier-api-cancel:${id}`,
+		reason: "Supplier API order cancelled",
+	};
+	if (row.state === "cancelled") {
+		// Older cancellations credited the wallet after the cancel batch; make
+		// sure a cancelled order is always refunded exactly once.
+		if (!(await findWalletEntry(db, refund.idempotencyKey)))
+			await mutateWallet(db, refund);
 		return { ok: true, order_id: id, status: "cancelled" };
+	}
 	if (
+		!row.delivery_id ||
 		row.delivery_status !== "pending" ||
 		!["paid", "fulfilling"].includes(row.status)
 	)
@@ -247,44 +402,86 @@ export async function cancelSupplierApiOrder(
 			"Order cannot be cancelled",
 		);
 	const now = Date.now();
+	const nextVersion = row.version + 1;
+	// The refund ledger row is the anchor of the whole cancellation: it is only
+	// inserted against the exact pre-cancel state (order, delivery and wallet
+	// snapshot), and every other statement requires it. A stale snapshot or a
+	// concurrent order change therefore changes nothing, and the caller retries.
+	const orderGuard = orderStateGuard(
+		row.shop_order_id,
+		row.status,
+		row.version,
+	);
+	const wallet = walletMutationStatements(
+		db,
+		refund,
+		await loadWalletSnapshot(db, userId),
+		{
+			now,
+			guardSql: `${orderGuard.sql} AND EXISTS (SELECT 1 FROM delivery_records WHERE id = ? AND status = 'pending')`,
+			guardBindings: [...orderGuard.bindings, row.delivery_id],
+		},
+	);
+	const anchorSql =
+		"EXISTS (SELECT 1 FROM wallet_entries WHERE idempotency_key = ?)";
 	const results = await db.batch([
+		wallet.insert,
+		wallet.update,
 		db
 			.prepare(
-				"UPDATE delivery_records SET status = 'failed', error_code = 'supplier_api_cancelled', next_attempt_at = NULL, updated_at = ? WHERE id = ? AND status = 'pending'",
+				`UPDATE delivery_records SET status = 'failed', error_code = 'supplier_api_cancelled',
+				 next_attempt_at = NULL, updated_at = ? WHERE id = ? AND status = 'pending' AND ${anchorSql}`,
 			)
-			.bind(now, row.delivery_id),
+			.bind(now, row.delivery_id, refund.idempotencyKey),
 		db
 			.prepare(
-				"UPDATE stock_entries SET status = 'available', order_item_id = NULL, reserved_at = NULL, updated_at = ? WHERE order_item_id = ? AND status = 'reserved'",
+				`UPDATE stock_entries SET status = 'available', order_item_id = NULL, reserved_at = NULL, updated_at = ?
+				 WHERE order_item_id = ? AND status = 'reserved' AND ${anchorSql}`,
 			)
-			.bind(now, row.order_item_id),
+			.bind(now, row.order_item_id, refund.idempotencyKey),
 		db
 			.prepare(
-				"UPDATE shop_orders SET status = 'cancelled', cancelled_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND status IN ('paid', 'fulfilling')",
+				`UPDATE shop_orders SET status = 'cancelled', cancelled_at = ?, version = ?, updated_at = ?
+				 WHERE id = ? AND status = ? AND version = ? AND ${anchorSql}`,
 			)
-			.bind(now, now, row.shop_order_id),
+			.bind(
+				now,
+				nextVersion,
+				now,
+				row.shop_order_id,
+				row.status,
+				row.version,
+				refund.idempotencyKey,
+			),
 		db
 			.prepare(
-				"UPDATE supplier_api_orders SET state = 'cancelled', updated_at = ? WHERE id = ? AND state = 'processing'",
+				`UPDATE supplier_api_orders SET state = 'cancelled', updated_at = ?
+				 WHERE id = ? AND state = 'processing' AND ${anchorSql}`,
 			)
-			.bind(now, id),
+			.bind(now, id, refund.idempotencyKey),
+		db
+			.prepare(
+				`INSERT INTO shop_order_events
+				 (id, order_id, event_type, visibility, from_status, to_status, order_version, actor_type, created_at)
+				 SELECT ?, id, 'status_changed', 'internal', ?, 'cancelled', ?, 'customer', ?
+				 FROM shop_orders WHERE id = ? AND status = 'cancelled' AND version = ?`,
+			)
+			.bind(
+				crypto.randomUUID(),
+				row.status,
+				nextVersion,
+				now,
+				row.shop_order_id,
+				nextVersion,
+			),
 	]);
-	if (Number(results[0]?.meta.changes ?? 0) !== 1)
+	if (Number(results[1]?.meta.changes ?? 0) !== 1)
 		throw new DomainError(
-			"supplier_order_not_cancellable",
+			"wallet_conflict",
 			409,
-			"Order cannot be cancelled",
+			"Wallet or order changed; retry cancellation",
+			{ retryable: true },
 		);
-	await mutateWallet(db, {
-		userId,
-		direction: "credit",
-		amountMinor: row.total_minor,
-		currency: row.currency,
-		sourceType: "refund",
-		sourceId: row.shop_order_id,
-		idempotencyKey: `supplier-api-cancel:${id}`,
-		reason: "Supplier API order cancelled",
-	});
 	return { ok: true, order_id: id, status: "cancelled" };
 }
 

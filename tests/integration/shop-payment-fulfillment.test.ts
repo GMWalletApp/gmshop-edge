@@ -443,7 +443,7 @@ describe("shop payment fulfillment", { timeout: 30_000 }, () => {
 			request: new Request("https://shop.example/order", {
 				headers: {
 					"x-request-id": "reveal-request",
-					"cf-connecting-ip": "192.0.2.10",
+					"x-gmshop-client-ip": "192.0.2.10",
 				},
 			}),
 		});

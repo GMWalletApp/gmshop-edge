@@ -8,6 +8,7 @@ import { verifySensitiveAdminAction } from "#/features/auth/server/reauthenticat
 import { decryptDeliveryContent } from "#/features/fulfillment/secrets";
 import { publishPendingDeliveries } from "#/features/fulfillment/server/outbox";
 import { DomainError } from "#/lib/domain-error";
+import { clientIp } from "#/server/client-ip";
 import { getCloudflareEnv } from "#/server/db.server";
 import { loadRequestRuntimeConfig } from "#/server/runtime-config";
 
@@ -287,7 +288,7 @@ function auditStatement(
 			action,
 			targetId,
 			context.request.headers.get("x-request-id"),
-			context.request.headers.get("cf-connecting-ip"),
+			clientIp(context.request),
 			after == null ? null : JSON.stringify(after),
 			now,
 		);

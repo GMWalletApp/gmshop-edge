@@ -8,7 +8,9 @@ const allowedTransitions: Record<ShopOrderStatus, readonly ShopOrderStatus[]> =
 		fulfilling: ["completed", "refunding", "failed"],
 		completed: ["refunding"],
 		cancelled: [],
-		expired: [],
+		// A verified late payment (or an administrator confirming an offline
+		// payment) may revive an expired order; fulfillment runs as for any paid order.
+		expired: ["paid"],
 		refunding: ["refunded", "completed", "failed"],
 		refunded: [],
 		failed: ["fulfilling", "refunding"],

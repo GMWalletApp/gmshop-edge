@@ -140,6 +140,56 @@ describe("shop payment providers", () => {
 		).resolves.toMatchObject({ type: "payment_pending" });
 	});
 
+	it("gives a confirming and a paid GMPay notification for one transaction distinct event ids", async () => {
+		const ids = new Set<string>();
+		for (const status of ["confirming", "paid"] as const) {
+			const params = {
+				pid: "1000",
+				trade_id: "trade-gmpay-tx",
+				order_id: "11111111111141118111111111111111",
+				amount: "12.345",
+				actual_amount: status === "paid" ? "12.345" : "0",
+				block_transaction_id: "0xabc",
+				status,
+			};
+			const event = await gmpayPaymentProvider.parseWebhook(
+				new Request("https://shop.example/webhook", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({
+						...params,
+						signature: await signGmpay(params, "epusdt_secret_key"),
+					}),
+				}),
+				epusdtCredential(),
+			);
+			expect(event.type).toBe(
+				status === "paid" ? "payment_succeeded" : "payment_pending",
+			);
+			ids.add(event.providerEventId);
+		}
+		expect(ids.size).toBe(2);
+	});
+
+	it("passes the order expiry to GMPay-compatible checkouts only through supported fields", async () => {
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				status_code: 200,
+				data: {
+					trade_id: "trade-1",
+					payment_url: "https://pay.example.com/checkout/trade-1",
+					expiration_time: 1_900_000_000,
+				},
+			}),
+		);
+		await gmpayPaymentProvider.createPayment(
+			paymentInput({ expiresAt: Date.now() + 900_000 }),
+			epusdtCredential(),
+			fetcher as unknown as typeof fetch,
+		);
+		expect(fetcher).toHaveBeenCalledTimes(1);
+	});
+
 	it("creates EPay redirects and verifies its GET callback", async () => {
 		const fetcher = vi.fn(
 			async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -196,6 +246,77 @@ describe("shop payment providers", () => {
 			amountDecimal: "123.4500",
 			merchantOrderId: "11111111111141118111111111111111",
 		});
+	});
+
+	it("only fulfils Stripe sessions whose payment actually settled", async () => {
+		const webhookSecret = "whsec_test-secret";
+		const cases = [
+			["checkout.session.completed", "unpaid", "payment_pending"],
+			["checkout.session.completed", "paid", "payment_succeeded"],
+			[
+				"checkout.session.completed",
+				"no_payment_required",
+				"payment_succeeded",
+			],
+			["checkout.session.async_payment_succeeded", "paid", "payment_succeeded"],
+			["checkout.session.async_payment_failed", "unpaid", "payment_failed"],
+			["checkout.session.expired", "unpaid", "payment_expired"],
+			["charge.succeeded", undefined, "payment_ignored"],
+		] as const;
+		for (const [type, paymentStatus, expected] of cases) {
+			const body = JSON.stringify({
+				id: `evt_${type}_${paymentStatus}`,
+				type,
+				data: {
+					object: {
+						id: "cs_test_1",
+						amount_total: 1000,
+						currency: "cny",
+						...(paymentStatus ? { payment_status: paymentStatus } : {}),
+					},
+				},
+			});
+			const timestamp = 1_700_000_000;
+			const signature = await hmacSha256Hex(
+				webhookSecret,
+				`${timestamp}.${body}`,
+			);
+			await expect(
+				stripePaymentProvider.parseWebhook(
+					new Request("https://shop.test/webhook", {
+						method: "POST",
+						headers: { "stripe-signature": `t=${timestamp},v1=${signature}` },
+						body,
+					}),
+					{ secretKey: "sk_test_key", webhookSecret },
+					timestamp * 1000,
+				),
+				`${type}/${paymentStatus}`,
+			).resolves.toMatchObject({ type: expected });
+		}
+	});
+
+	it("clamps the Stripe session expiry to the order expiry within Stripe's limits", async () => {
+		const fetcher = vi.fn(
+			async (_input: RequestInfo | URL, init?: RequestInit) => {
+				const body = new URLSearchParams(String(init?.body));
+				const expiresAt = Number(body.get("expires_at"));
+				const now = Date.now() / 1000;
+				expect(expiresAt).toBeGreaterThanOrEqual(now + 30 * 60);
+				expect(expiresAt).toBeLessThanOrEqual(now + 24 * 3600);
+				return Response.json({
+					id: "cs_1",
+					url: "https://checkout.stripe.example/cs_1",
+					expires_at: expiresAt,
+				});
+			},
+		);
+		await stripePaymentProvider.createPayment(
+			paymentInput({ expiresAt: Date.now() + 900_000 }),
+			{ secretKey: "sk_test_key", webhookSecret: "whsec_test-secret" },
+			fetcher as unknown as typeof fetch,
+		);
+		expect(fetcher).toHaveBeenCalledTimes(1);
 	});
 
 	it("rejects a modified Stripe callback payload", async () => {

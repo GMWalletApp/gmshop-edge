@@ -6,6 +6,7 @@ import { DomainError } from "#/lib/domain-error";
 import { minorToDecimal } from "#/lib/units";
 import {
 	checkEpusdtHealth,
+	epusdtFetch,
 	epusdtMerchantOrderId,
 	epusdtUrl,
 	manualRefundMethods,
@@ -49,15 +50,15 @@ export const epayPaymentProvider: PaymentProviderAdapter = {
 			credential.secretKey,
 			new Set(["sign", "sign_type"]),
 		);
-		const response = await fetcher(
+		const response = await epusdtFetch(
 			epusdtUrl(credential.baseUrl, "/submit.php"),
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/x-www-form-urlencoded" },
 				body: new URLSearchParams(params),
-				redirect: "manual",
-				signal: AbortSignal.timeout(10_000),
 			},
+			fetcher,
+			{ expectRedirect: true },
 		);
 		const location = response.headers.get("location");
 		if (response.status < 300 || response.status >= 400 || !location)

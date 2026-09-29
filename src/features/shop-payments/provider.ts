@@ -52,6 +52,11 @@ export type CreatePaymentInput = {
 	defaultNetwork: string;
 	payerIp: string | null;
 	payerMobile?: boolean;
+	/**
+	 * When the shop stops accepting this payment (order expiry, ms since epoch).
+	 * Providers clamp it to their own limits; `null` means the provider default.
+	 */
+	expiresAt?: number | null;
 };
 
 export type CreatedPayment = {
@@ -86,7 +91,9 @@ export type PaymentWebhookEvent = {
 		| "payment_pending"
 		| "payment_succeeded"
 		| "payment_failed"
-		| "payment_expired";
+		| "payment_expired"
+		/** Authenticated notification the shop does not act on (e.g. refund or unrelated event types). */
+		| "payment_ignored";
 	amountMinor: string | null;
 	amountDecimal?: string | null;
 	currency: string | null;

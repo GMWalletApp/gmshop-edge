@@ -21,6 +21,10 @@ export function catalogOperationErrorMessage(error: unknown) {
 			return m.catalog_error_supplier_duplicate();
 		case "reauthentication_failed":
 			return m.auth_error_invalid_credentials();
+		case "reauthentication_rate_limited":
+			return m.auth_error_reauthentication_rate_limited();
+		case "product_has_order_history":
+			return m.catalog_error_order_history();
 		default:
 			return m.catalog_operation_failed();
 	}

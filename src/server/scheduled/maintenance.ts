@@ -5,6 +5,10 @@ import { loadOperationalSettings } from "#/server/operational-settings";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 import { progressivelyReencryptSecrets } from "#/server/scheduled/secret-rotation";
 
+// Work that has been pending for this long without a live outbox row is
+// re-requested; the window also bounds how often one record is re-emitted.
+const RECONCILE_WINDOW_MS = 10 * 60_000;
+
 export async function runMaintenance(
 	env: Env,
 	_cron: string,
@@ -16,6 +20,10 @@ export async function runMaintenance(
 		builds,
 		notifications,
 		outbox,
+		deliveriesReconciled,
+		,
+		refundsReconciled,
+		,
 		entitlementSevenDayReminders,
 		entitlementOneDayReminders,
 		expiredCarts,
@@ -40,6 +48,73 @@ export async function runMaintenance(
 			`UPDATE outbox_events SET status = 'pending', next_attempt_at = ?, updated_at = ?
 			 WHERE status = 'processing' AND updated_at <= ?`,
 		).bind(now, now, now - 300_000),
+		// Deliveries still pending long after their request was published lost
+		// their queue message (dead-lettered or dropped); re-request them at most
+		// once per reconciliation window.
+		env.DB.prepare(
+			`INSERT INTO outbox_events
+			 (id, event_type, aggregate_type, aggregate_id, idempotency_key, payload,
+			  status, attempt_count, created_at, updated_at)
+			 SELECT lower(hex(randomblob(16))), 'delivery.requested', 'delivery', dr.id,
+			  'delivery-reconcile:' || dr.id || ':' || ?,
+			  json_object('deliveryId', dr.id, 'orderItemId', dr.order_item_id),
+			  'pending', 0, ?, ?
+			 FROM delivery_records dr
+			 JOIN shop_order_items oi ON oi.id = dr.order_item_id
+			 JOIN shop_orders o ON o.id = oi.order_id
+			 WHERE dr.status = 'pending' AND dr.updated_at <= ?
+			 AND o.status IN ('paid', 'fulfilling')
+			 AND NOT EXISTS (SELECT 1 FROM outbox_events oe
+			  WHERE oe.aggregate_type = 'delivery' AND oe.aggregate_id = dr.id
+			  AND oe.status IN ('pending', 'processing'))
+			 ORDER BY dr.updated_at, dr.id LIMIT 100
+			 ON CONFLICT(idempotency_key) DO NOTHING`,
+		).bind(
+			Math.floor(now / RECONCILE_WINDOW_MS),
+			now,
+			now,
+			now - RECONCILE_WINDOW_MS,
+		),
+		// Re-stamp the re-requested deliveries so they only qualify again after a
+		// full window, whatever happens to the outbox row in between.
+		env.DB.prepare(
+			`UPDATE delivery_records SET updated_at = ? WHERE status = 'pending'
+			 AND EXISTS (SELECT 1 FROM outbox_events oe
+			  WHERE oe.aggregate_type = 'delivery' AND oe.aggregate_id = delivery_records.id
+			  AND oe.idempotency_key = 'delivery-reconcile:' || delivery_records.id || ':' || ?
+			  AND oe.created_at = ?)`,
+		).bind(now, Math.floor(now / RECONCILE_WINDOW_MS), now),
+		env.DB.prepare(
+			`INSERT INTO outbox_events
+			 (id, event_type, aggregate_type, aggregate_id, idempotency_key, payload,
+			  status, attempt_count, created_at, updated_at)
+			 SELECT lower(hex(randomblob(16))), 'refund.requested', 'refund', r.id,
+			  'refund-reconcile:' || r.id || ':' || ?,
+			  json_object('refundId', r.id), 'pending', 0, ?, ?
+			 FROM refunds r
+			 WHERE r.status IN ('pending', 'processing')
+			 AND COALESCE(r.failure_code, '') <> 'manual_action_required'
+			 AND r.updated_at <= ?
+			 AND (r.next_attempt_at IS NULL OR r.next_attempt_at <= ?)
+			 AND NOT EXISTS (SELECT 1 FROM outbox_events oe
+			  WHERE oe.aggregate_type = 'refund' AND oe.aggregate_id = r.id
+			  AND oe.status IN ('pending', 'processing'))
+			 ORDER BY r.updated_at, r.id LIMIT 100
+			 ON CONFLICT(idempotency_key) DO NOTHING`,
+		).bind(
+			Math.floor(now / RECONCILE_WINDOW_MS),
+			now,
+			now,
+			now - RECONCILE_WINDOW_MS,
+			now - RECONCILE_WINDOW_MS,
+		),
+		env.DB.prepare(
+			`UPDATE refunds SET updated_at = ? WHERE status IN ('pending', 'processing')
+			 AND EXISTS (SELECT 1 FROM outbox_events oe
+			  WHERE oe.aggregate_type = 'refund' AND oe.aggregate_id = refunds.id
+			  AND oe.idempotency_key = 'refund-reconcile:' || refunds.id || ':' || ?
+			  AND oe.created_at = ?)`,
+		).bind(now, Math.floor(now / RECONCILE_WINDOW_MS), now),
 		env.DB.prepare(
 			`INSERT INTO outbox_events
 			 (id, event_type, aggregate_type, aggregate_id, idempotency_key, payload,
@@ -124,6 +199,8 @@ export async function runMaintenance(
 		buildsExpired: changes(builds),
 		notificationsRecovered: changes(notifications),
 		outboxRecovered: changes(outbox),
+		deliveriesReconciled: changes(deliveriesReconciled),
+		refundsReconciled: changes(refundsReconciled),
 		entitlementRemindersQueued:
 			changes(entitlementSevenDayReminders) +
 			changes(entitlementOneDayReminders),

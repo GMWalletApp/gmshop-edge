@@ -54,11 +54,11 @@ export async function quotePaymentCurrency(
 			 observed_at FROM exchange_rates
 			 WHERE ((base_currency = ? AND quote_currency = ?) OR
 			  (base_currency = ? AND quote_currency = ?))
-			 AND enabled = 1
+			 AND enabled = 1 AND (expires_at IS NULL OR expires_at > ?)
 			 ORDER BY CASE WHEN base_currency = ? THEN 0 ELSE 1 END,
 			 sort_order, observed_at DESC, id LIMIT 1`,
 		)
-		.bind(currency, paymentCurrency, paymentCurrency, currency, currency)
+		.bind(currency, paymentCurrency, paymentCurrency, currency, now, currency)
 		.first<ExchangeRateRow>();
 	if (!rate)
 		throw new DomainError(

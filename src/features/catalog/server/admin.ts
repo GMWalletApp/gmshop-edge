@@ -21,6 +21,7 @@ import { removeSellableItemsFromAllCarts } from "#/features/storefront/server/ca
 import { csvCell } from "#/lib/csv";
 import { DomainError } from "#/lib/domain-error";
 import { decryptSecret, encryptSecret } from "#/lib/secrets";
+import { clientIp } from "#/server/client-ip";
 import { getAdminRuntimeServerContext } from "#/server/context";
 import { readImageDimensions } from "./image-dimensions";
 import {
@@ -580,6 +581,29 @@ export const restoreProductFn = createServerFn({ method: "POST" })
 		};
 	});
 
+/**
+ * Orders, deliveries and entitlements are immutable history; a product that
+ * was ever sold stays in the recycle bin instead of being erased.
+ */
+export async function assertProductHasNoOrderHistory(
+	db: D1Database,
+	productId: string,
+) {
+	const history = await db
+		.prepare(
+			`SELECT EXISTS(SELECT 1 FROM shop_order_items WHERE product_id = ?) OR
+			 EXISTS(SELECT 1 FROM customer_entitlements WHERE product_id = ?) AS referenced`,
+		)
+		.bind(productId, productId)
+		.first<{ referenced: number }>();
+	if (history?.referenced)
+		throw new DomainError(
+			"product_has_order_history",
+			409,
+			"Products referenced by orders or entitlements cannot be permanently deleted",
+		);
+}
+
 export const deleteProductFn = createServerFn({ method: "POST" })
 	.validator((input: z.input<typeof productLifecycleInputSchema>) =>
 		productLifecycleInputSchema.parse(input),
@@ -604,6 +628,7 @@ export const deleteProductFn = createServerFn({ method: "POST" })
 				409,
 				"Product has changed since it was loaded",
 			);
+		await assertProductHasNoOrderHistory(context.db, data.id);
 		const objectRows = await context.db
 			.prepare(
 				`SELECT object_key FROM product_media WHERE product_id = ?
@@ -1154,7 +1179,7 @@ function auditStatement(
 			entry.targetType,
 			entry.targetId,
 			context.request.headers.get("x-request-id"),
-			context.request.headers.get("cf-connecting-ip"),
+			clientIp(context.request),
 			entry.before == null ? null : JSON.stringify(entry.before),
 			entry.after == null ? null : JSON.stringify(entry.after),
 			entry.now,

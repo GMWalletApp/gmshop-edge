@@ -70,6 +70,8 @@ export const cryptomusPaymentProvider: PaymentProviderAdapter = {
 			payload.to_currency = input.defaultToken.toUpperCase();
 			payload.network = input.defaultNetwork.toLowerCase();
 		}
+		const lifetime = cryptomusLifetimeSeconds(input.expiresAt ?? null);
+		if (lifetime !== null) payload.lifetime = lifetime;
 		const invoice = parseInvoiceResponse(
 			await cryptomusRequest("/payment", payload, credential, fetcher),
 		);
@@ -112,14 +114,14 @@ export const cryptomusPaymentProvider: PaymentProviderAdapter = {
 		const raw = parseJsonObject(body);
 		const { sign, ...unsigned } = raw;
 		const credential = cryptomusCredentialSchema.parse(rawCredential);
-		const expected = cryptomusSign(
-			JSON.stringify(unsigned).replaceAll("\\", "/"),
-			credential.paymentApiKey,
+		const provided = typeof sign === "string" ? sign.toLowerCase() : "";
+		const valid = cryptomusCanonicalBodies(unsigned).some((canonical) =>
+			constantTimeEqual(
+				provided,
+				cryptomusSign(canonical, credential.paymentApiKey),
+			),
 		);
-		if (
-			typeof sign !== "string" ||
-			!constantTimeEqual(sign.toLowerCase(), expected)
-		)
+		if (!valid)
 			throw new DomainError(
 				"invalid_payment_signature",
 				401,
@@ -153,6 +155,30 @@ export const cryptomusPaymentProvider: PaymentProviderAdapter = {
 			throw invalidProviderResponse();
 	},
 };
+
+// Cryptomus invoices live between 5 minutes and 12 hours.
+const CRYPTOMUS_MIN_LIFETIME_S = 300;
+const CRYPTOMUS_MAX_LIFETIME_S = 43_200;
+
+function cryptomusLifetimeSeconds(expiresAt: number | null, now = Date.now()) {
+	if (expiresAt === null) return null;
+	return Math.min(
+		CRYPTOMUS_MAX_LIFETIME_S,
+		Math.max(CRYPTOMUS_MIN_LIFETIME_S, Math.ceil((expiresAt - now) / 1000)),
+	);
+}
+
+/**
+ * Cryptomus signs `md5(base64(json_encode($data, JSON_UNESCAPED_UNICODE)) . key)`.
+ * PHP's json_encode escapes "/" as "\/", so the PHP-compatible form is the
+ * primary candidate; the plain JSON.stringify form is accepted as well for
+ * payloads re-encoded without escaped slashes.
+ */
+export function cryptomusCanonicalBodies(payload: Record<string, unknown>) {
+	const plain = JSON.stringify(payload);
+	const phpStyle = plain.replaceAll("/", "\\/");
+	return phpStyle === plain ? [plain] : [phpStyle, plain];
+}
 
 export function cryptomusSign(body: string, paymentApiKey: string) {
 	const encodedBody = bytesToBase64(encoder.encode(body));

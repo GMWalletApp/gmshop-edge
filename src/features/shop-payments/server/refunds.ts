@@ -3,6 +3,7 @@ import { refundEntitlementGrantStatements } from "#/features/entitlements/server
 import { convertMinorAmount } from "#/features/exchange-rates/rates";
 import type { ShopOrderStatus } from "#/features/shop-orders/schema";
 import { getPaymentProvider } from "#/features/shop-payments/providers";
+import { walletMutationStatements } from "#/features/wallet/server/ledger";
 import { DomainError } from "#/lib/domain-error";
 import { decryptSecret } from "#/lib/secrets";
 import { createAuditStatement } from "#/server/audit";
@@ -10,6 +11,7 @@ import type { RefundQueueMessage } from "#/server/queue/types";
 
 const REFUND_PROCESSING_LEASE_MS = 120_000;
 
+import { clientIp } from "#/server/client-ip";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 
 const refundRequestSchema = z.object({
@@ -261,57 +263,43 @@ async function requestWalletShopRefund(
 			409,
 			"Refund amount exceeds the refundable balance",
 		);
-	const balanceBefore = BigInt(order.balance_minor);
-	const balanceAfter = balanceBefore + amount;
-	if (balanceAfter > 9_223_372_036_854_775_807n)
-		throw new DomainError(
-			"wallet_balance_limit",
-			409,
-			"Balance limit exceeded",
-		);
 	const id = crypto.randomUUID();
 	const now = Date.now();
-	const balanceVersion = order.balance_version + 1;
 	const orderVersion = order.version + 1;
 	const orderStatus: ShopOrderStatus =
 		amount === available ? "refunded" : order.status;
+	const statusChanged = orderStatus !== order.status;
 	const walletKey = `wallet-refund:${id}`;
+	const wallet = walletMutationStatements(
+		db,
+		{
+			userId: order.user_id,
+			direction: "credit",
+			amountMinor: input.amountMinor,
+			currency: order.currency,
+			sourceType: "refund",
+			sourceId: order.id,
+			idempotencyKey: walletKey,
+			reason: input.reason,
+			actorUserId: context.actorUserId,
+		},
+		{
+			balanceMinor: order.balance_minor,
+			balanceVersion: order.balance_version,
+		},
+		{
+			now,
+			// A refund is money owed to the customer even after the account was
+			// disabled, so the enabled check does not apply here.
+			requireEnabled: false,
+			guardSql:
+				"EXISTS (SELECT 1 FROM shop_orders WHERE id = ? AND status = ? AND version = ?)",
+			guardBindings: [order.id, order.status, order.version],
+		},
+	);
 	const statements: D1PreparedStatement[] = [
-		db
-			.prepare(`UPDATE users SET balance_minor = ?, balance_version = ?, updated_at = ?
-		 WHERE id = ? AND balance_version = ? AND EXISTS (
-		  SELECT 1 FROM shop_orders WHERE id = ? AND status = ? AND version = ?
-		 )`)
-			.bind(
-				balanceAfter.toString(),
-				balanceVersion,
-				now,
-				order.user_id,
-				order.balance_version,
-				order.id,
-				order.status,
-				order.version,
-			),
-		db
-			.prepare(`INSERT INTO wallet_entries
-		 (id, user_id, direction, amount_minor, balance_before_minor, balance_after_minor,
-		  currency, source_type, source_id, idempotency_key, reason, actor_user_id, created_at)
-		 SELECT ?, id, 'credit', ?, ?, balance_minor, ?, 'refund', ?, ?, ?, ?, ?
-		 FROM users WHERE id = ? AND balance_version = ? AND balance_minor = ?`)
-			.bind(
-				crypto.randomUUID(),
-				input.amountMinor,
-				order.balance_minor,
-				order.currency,
-				order.id,
-				walletKey,
-				input.reason,
-				context.actorUserId,
-				now,
-				order.user_id,
-				balanceVersion,
-				balanceAfter.toString(),
-			),
+		wallet.insert,
+		wallet.update,
 		db
 			.prepare(`UPDATE shop_orders SET status = ?, version = ?, refunded_at = CASE WHEN ? = 'refunded' THEN ? ELSE refunded_at END, updated_at = ?
 		 WHERE id = ? AND status = ? AND version = ? AND EXISTS (
@@ -349,6 +337,8 @@ async function requestWalletShopRefund(
 				order.id,
 				orderVersion,
 			),
+		// Partial refunds leave the order status unchanged; the transition CHECK
+		// constraint requires a NULL status pair in that case.
 		db
 			.prepare(`INSERT INTO shop_order_events
 		 (id, order_id, event_type, visibility, from_status, to_status, order_version,
@@ -357,8 +347,8 @@ async function requestWalletShopRefund(
 		 FROM shop_orders WHERE id = ? AND version = ?`)
 			.bind(
 				crypto.randomUUID(),
-				order.status,
-				orderStatus,
+				statusChanged ? order.status : null,
+				statusChanged ? orderStatus : null,
 				input.reason,
 				context.actorUserId,
 				now,
@@ -381,12 +371,13 @@ async function requestWalletShopRefund(
 			...(await refundEntitlementGrantStatements(db, order.id, now)),
 		);
 	const results = await db.batch(statements);
-	if (Number(results[0]?.meta.changes ?? 0) !== 1)
+	if (Number(results[1]?.meta.changes ?? 0) !== 1)
 		throw new DomainError(
 			"wallet_conflict",
 			409,
 			"Wallet changed; retry refund",
 		);
+
 	return {
 		id,
 		status: "succeeded" as const,
@@ -952,7 +943,7 @@ function refundCompletionAuditStatement(
 			input.actor?.actorUserId ?? null,
 			input.actor ? "refund.manual_completed" : "refund.processed",
 			input.actor?.request.headers.get("x-request-id") ?? null,
-			input.actor?.request.headers.get("cf-connecting-ip") ?? null,
+			clientIp(input.actor?.request),
 			JSON.stringify({
 				status,
 				orderStatus: input.orderStatus,
@@ -991,7 +982,7 @@ function refundRequestedAuditStatement(
 			crypto.randomUUID(),
 			actorUserId,
 			request.headers.get("x-request-id"),
-			request.headers.get("cf-connecting-ip"),
+			clientIp(request),
 			JSON.stringify({
 				orderId: refund.orderId,
 				amountMinor: refund.amountMinor,

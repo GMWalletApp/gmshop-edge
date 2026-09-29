@@ -7,6 +7,7 @@ import { sha256Hex } from "#/features/shop-payments/signature";
 import { DomainError } from "#/lib/domain-error";
 import { minorToDecimal } from "#/lib/units";
 import { rsaSha256Sign, rsaSha256Verify } from "./rsa";
+import { shanghaiDateTimeParts } from "./shanghai-time";
 import { readPaymentWebhookText } from "./webhook-body";
 
 const gateway = "https://openapi.alipay.com/gateway.do";
@@ -73,6 +74,7 @@ export function createAlipayProvider(
 					product_code: productCode,
 					quit_url:
 						productCode === "QUICK_WAP_WAY" ? input.cancelUrl : undefined,
+					time_expire: alipayExpiry(input.expiresAt ?? null),
 				},
 				{
 					notify_url: input.webhookUrl,
@@ -151,7 +153,8 @@ export function createAlipayProvider(
 						? "payment_succeeded"
 						: event.trade_status === "TRADE_CLOSED"
 							? "payment_expired"
-							: "payment_failed",
+							: // WAIT_BUYER_PAY: the buyer opened the cashier but has not paid yet.
+								"payment_pending",
 				amountMinor: decimalToCnyMinor(event.total_amount),
 				currency: "CNY",
 				merchantOrderId: event.out_trade_no,
@@ -432,20 +435,14 @@ export function alipayCanonical(
 		.join("&");
 }
 
+// Alipay requires the absolute expiry to be at least one minute ahead.
+function alipayExpiry(expiresAt: number | null, now = Date.now()) {
+	if (expiresAt === null) return undefined;
+	return alipayTimestamp(new Date(Math.max(expiresAt, now + 60_000)));
+}
+
 function alipayTimestamp(date = new Date()) {
-	const parts = new Intl.DateTimeFormat("en-CA", {
-		timeZone: "Asia/Shanghai",
-		year: "numeric",
-		month: "2-digit",
-		day: "2-digit",
-		hour: "2-digit",
-		minute: "2-digit",
-		second: "2-digit",
-		hourCycle: "h23",
-	}).formatToParts(date);
-	const value = Object.fromEntries(
-		parts.map((part) => [part.type, part.value]),
-	);
+	const value = shanghaiDateTimeParts(date);
 	return `${value.year}-${value.month}-${value.day} ${value.hour}:${value.minute}:${value.second}`;
 }
 

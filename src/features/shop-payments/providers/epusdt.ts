@@ -10,8 +10,31 @@ import {
 	hmacSha256Hex,
 } from "#/features/shop-payments/signature";
 import { DomainError } from "#/lib/domain-error";
+import {
+	fetchOutbound,
+	type OutboundFetchOptions,
+} from "#/server/outbound-fetch";
 
 const encoder = new TextEncoder();
+
+/**
+ * Requests to operator-configured Epusdt-compatible gateways go through the
+ * hardened outbound client: no redirects, bounded responses, and (outside
+ * Workers) a public-address proof. Injected fetchers (tests) skip the DNS proof.
+ */
+export function epusdtFetch(
+	url: string | URL,
+	init: RequestInit,
+	fetcher: typeof fetch,
+	options: Pick<OutboundFetchOptions, "expectRedirect"> = {},
+) {
+	return fetchOutbound(url, init, {
+		...options,
+		fetcher,
+		maxResponseBytes: 256 * 1024,
+		validateDestination: fetcher === fetch,
+	});
+}
 
 const statusResponseSchema = z.object({
 	status_code: z.literal(200),
@@ -114,12 +137,13 @@ export async function queryEpusdtPayment(
 	credential: EpusdtCredential,
 	fetcher: typeof fetch,
 ): Promise<PaymentQuery> {
-	const response = await fetcher(
+	const response = await epusdtFetch(
 		epusdtUrl(
 			credential.baseUrl,
 			`/pay/check-status/${encodeURIComponent(providerPaymentId)}`,
 		),
-		{ signal: AbortSignal.timeout(10_000) },
+		{},
+		fetcher,
 	);
 	const result = statusResponseSchema.parse(await parseEpusdtJson(response));
 	return {
@@ -138,9 +162,10 @@ export async function checkEpusdtHealth(
 	credential: EpusdtCredential,
 	fetcher: typeof fetch,
 ) {
-	const response = await fetcher(
+	const response = await epusdtFetch(
 		epusdtUrl(credential.baseUrl, "/payments/gmpay/v1/config"),
-		{ signal: AbortSignal.timeout(10_000) },
+		{},
+		fetcher,
 	);
 	healthResponseSchema.parse(await parseEpusdtJson(response));
 }

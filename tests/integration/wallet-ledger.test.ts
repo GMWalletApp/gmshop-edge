@@ -5,7 +5,11 @@ import {
 	completeWalletStoreOrder,
 	processShopPaymentEvent,
 } from "#/features/shop-payments/server/service";
-import { mutateWallet } from "#/features/wallet/server/ledger";
+import {
+	loadWalletSnapshot,
+	mutateWallet,
+	walletMutationStatements,
+} from "#/features/wallet/server/ledger";
 import { applyMigrations } from "./migrations";
 
 describe("user wallet ledger", { timeout: 30_000 }, () => {
@@ -28,6 +32,113 @@ describe("user wallet ledger", { timeout: 30_000 }, () => {
 	});
 
 	afterEach(async () => miniflare.dispose());
+
+	it("never records a ledger entry for a balance change that lost the race", async () => {
+		const userId = "00000000-0000-4000-8000-000000000001";
+		await mutateWallet(db, mutation("credit", "100", "credit-base"));
+		// Two writers read the same snapshot; the first one wins.
+		const stale = await loadWalletSnapshot(db, userId);
+		await mutateWallet(db, mutation("credit", "100", "credit-winner"));
+		const loser = walletMutationStatements(
+			db,
+			mutation("credit", "100", "credit-loser"),
+			stale,
+			{ now: Date.now() },
+		);
+		const results = await db.batch([loser.insert, loser.update]);
+		expect(results.map((result) => Number(result.meta.changes ?? 0))).toEqual([
+			0, 0,
+		]);
+		const state = await db
+			.prepare(
+				`SELECT (SELECT balance_minor FROM users WHERE id = ?) AS balance,
+				 (SELECT COUNT(*) FROM wallet_entries) AS entries,
+				 (SELECT COUNT(*) FROM wallet_entries WHERE idempotency_key = 'credit-loser') AS phantom`,
+			)
+			.bind(userId)
+			.first<Record<string, unknown>>();
+		expect(state).toEqual({ balance: "200", entries: 2, phantom: 0 });
+		// The retrying writer re-reads and lands on top of the winner.
+		await expect(
+			mutateWallet(db, mutation("credit", "100", "credit-loser")),
+		).resolves.toMatchObject({ balanceMinor: "300", duplicate: false });
+	});
+
+	it("keeps balance equal to the ledger under concurrent mutations", async () => {
+		const userId = "00000000-0000-4000-8000-000000000001";
+		await Promise.all(
+			Array.from({ length: 6 }, (_, index) =>
+				mutateWallet(db, mutation("credit", "10", `concurrent-${index}`)),
+			),
+		);
+		const state = await db
+			.prepare(
+				`SELECT (SELECT balance_minor FROM users WHERE id = ?) AS balance,
+				 (SELECT COUNT(*) FROM wallet_entries) AS entries,
+				 (SELECT balance_after_minor FROM wallet_entries ORDER BY created_at DESC, id DESC LIMIT 1) AS last_after`,
+			)
+			.bind(userId)
+			.first<Record<string, unknown>>();
+		expect(state).toMatchObject({ balance: "60", entries: 6 });
+		const chain = await db
+			.prepare(
+				"SELECT balance_before_minor, balance_after_minor FROM wallet_entries ORDER BY CAST(balance_after_minor AS INTEGER)",
+			)
+			.all<{ balance_before_minor: string; balance_after_minor: string }>();
+		let expected = 0n;
+		for (const entry of chain.results) {
+			expect(entry.balance_before_minor).toBe(expected.toString());
+			expected += 10n;
+			expect(entry.balance_after_minor).toBe(expected.toString());
+		}
+	});
+
+	it("refunds a wallet-paid order even after the customer account was disabled", async () => {
+		const userId = "00000000-0000-4000-8000-000000000001";
+		await mutateWallet(db, mutation("credit", "500", "credit-disabled"));
+		await db
+			.prepare(`INSERT INTO shop_orders
+		 (id, order_number, idempotency_key, user_id, contact_email,
+		  normalized_contact_email, locale, status, currency, currency_decimals,
+		  subtotal_minor, discount_minor, total_minor, paid_minor, version,
+		  expires_at, created_at, updated_at)
+		 VALUES ('00000000-0000-4000-8000-000000000030', 'ORDER-0003', 'order-0003',
+		  ?, 'buyer@example.com', 'buyer@example.com', 'en-US', 'pending_payment',
+		  'USD', 2, '300', '0', '300', '0', 1, 9999999999999, 1, 1)`)
+			.bind(userId)
+			.run();
+		await completeWalletStoreOrder(db, {
+			orderId: "00000000-0000-4000-8000-000000000030",
+			userId,
+		});
+		await db
+			.prepare("UPDATE users SET enabled = 0 WHERE id = ?")
+			.bind(userId)
+			.run();
+		await expect(
+			requestShopRefund(
+				db,
+				{
+					orderId: "00000000-0000-4000-8000-000000000030",
+					amountMinor: "300",
+					reason: "Refund owed to a suspended customer",
+					idempotencyKey: "wallet-refund-disabled",
+				},
+				{
+					actorUserId: userId,
+					request: new Request("https://shop.example.com/admin/orders"),
+				},
+			),
+		).resolves.toMatchObject({ status: "succeeded" });
+		const state = await db
+			.prepare(
+				`SELECT (SELECT balance_minor FROM users WHERE id = ?) AS balance,
+				 (SELECT status FROM shop_orders WHERE id = '00000000-0000-4000-8000-000000000030') AS status`,
+			)
+			.bind(userId)
+			.first();
+		expect(state).toEqual({ balance: "500", status: "refunded" });
+	});
 
 	it("keeps the user balance and immutable entries consistent", async () => {
 		await mutateWallet(db, mutation("credit", "50", "credit-0001"));

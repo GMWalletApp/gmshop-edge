@@ -20,7 +20,11 @@ export function createEntitlementGrantStatements(
 	orderId: string,
 	item: EntitlementOrderItem,
 	now: number,
+	/** When given, the grant only exists for this exact paid order version. */
+	orderVersion?: number,
 ) {
+	const versionSql = orderVersion === undefined ? "" : " AND version = ?";
+	const versionBindings = orderVersion === undefined ? [] : [orderVersion];
 	const entitlementId = item.renewed_from_entitlement_id ?? crypto.randomUUID();
 	const grantId = crypto.randomUUID();
 	const usageGranted = multipliedLimit(item.usage_limit, item.quantity);
@@ -36,7 +40,7 @@ export function createEntitlementGrantStatements(
 					  status, definition_version_id, usage_limit, usage_count, access_limit,
 					  access_count, created_at, updated_at)
 					 SELECT ?, user_id, ?, ?, ?, ?, ?, 'pending', ?, NULL, 0, NULL, 0, ?, ?
-					 FROM shop_orders WHERE id = ? AND status = 'paid'`,
+					 FROM shop_orders WHERE id = ? AND status = 'paid'${versionSql}`,
 				)
 				.bind(
 					entitlementId,
@@ -49,6 +53,7 @@ export function createEntitlementGrantStatements(
 					now,
 					now,
 					orderId,
+					...versionBindings,
 				),
 		);
 	}
@@ -62,7 +67,7 @@ export function createEntitlementGrantStatements(
 				 SELECT ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?
 				 FROM shop_orders orders
 				 JOIN customer_entitlements entitlement ON entitlement.id = ?
-				 WHERE orders.id = ? AND orders.status = 'paid'
+				 WHERE orders.id = ? AND orders.status = 'paid'${orderVersion === undefined ? "" : " AND orders.version = ?"}
 				 AND entitlement.user_id IS orders.user_id
 				 AND entitlement.sellable_item_id = ?`,
 			)
@@ -78,6 +83,7 @@ export function createEntitlementGrantStatements(
 				now,
 				entitlementId,
 				orderId,
+				...versionBindings,
 				item.sellable_item_id,
 			),
 	);

@@ -1,5 +1,8 @@
 import { z } from "zod";
-import type { PaymentProviderAdapter } from "#/features/shop-payments/provider";
+import type {
+	PaymentProviderAdapter,
+	PaymentWebhookEvent,
+} from "#/features/shop-payments/provider";
 import { stripeCredentialSchema } from "#/features/shop-payments/provider";
 import {
 	constantTimeEqual,
@@ -37,23 +40,55 @@ const stripeRefundSchema = z.object({
 	failure_reason: z.string().nullable().optional(),
 });
 
+// Stripe sends every event type the endpoint is subscribed to; unrelated types
+// are acknowledged as ignored instead of failing with a schema error.
 const webhookSchema = z.object({
 	id: z.string(),
-	type: z.enum([
-		"checkout.session.completed",
-		"checkout.session.async_payment_succeeded",
-		"checkout.session.async_payment_failed",
-		"checkout.session.expired",
-	]),
+	type: z.string(),
 	data: z.object({
 		object: z.object({
-			id: z.string(),
-			amount_total: z.number().int().nonnegative().nullable(),
-			currency: z.string().nullable(),
+			id: z.string().optional(),
+			amount_total: z.number().int().nonnegative().nullable().optional(),
+			currency: z.string().nullable().optional(),
 			payment_status: z.string().optional(),
 		}),
 	}),
 });
+
+// Stripe accepts a Checkout Session expiry between 30 minutes and 24 hours.
+const STRIPE_MIN_SESSION_LIFETIME_MS = 30 * 60_000 + 60_000;
+const STRIPE_MAX_SESSION_LIFETIME_MS = 24 * 3_600_000 - 60_000;
+
+function stripeSessionExpiresAt(expiresAt: number | null, now = Date.now()) {
+	if (expiresAt === null) return null;
+	const clamped = Math.min(
+		Math.max(expiresAt, now + STRIPE_MIN_SESSION_LIFETIME_MS),
+		now + STRIPE_MAX_SESSION_LIFETIME_MS,
+	);
+	return Math.ceil(clamped / 1000);
+}
+
+function stripeEventType(
+	type: string,
+	paymentStatus: string | undefined,
+): PaymentWebhookEvent["type"] {
+	switch (type) {
+		case "checkout.session.completed":
+			// Delayed-notification methods (bank debits, transfers) complete the
+			// session before the money settles; only a paid session fulfils.
+			return paymentStatus === "paid" || paymentStatus === "no_payment_required"
+				? "payment_succeeded"
+				: "payment_pending";
+		case "checkout.session.async_payment_succeeded":
+			return "payment_succeeded";
+		case "checkout.session.async_payment_failed":
+			return "payment_failed";
+		case "checkout.session.expired":
+			return "payment_expired";
+		default:
+			return "payment_ignored";
+	}
+}
 
 export const stripePaymentProvider: PaymentProviderAdapter = {
 	checkoutPresentation: "redirect",
@@ -73,6 +108,8 @@ export const stripePaymentProvider: PaymentProviderAdapter = {
 			"line_items[0][price_data][unit_amount]": input.amountMinor,
 			"line_items[0][price_data][product_data][name]": input.description,
 		});
+		const expiresAt = stripeSessionExpiresAt(input.expiresAt ?? null);
+		if (expiresAt !== null) body.set("expires_at", String(expiresAt));
 		const response = await fetcher(
 			"https://api.stripe.com/v1/checkout/sessions",
 			{
@@ -144,17 +181,10 @@ export const stripePaymentProvider: PaymentProviderAdapter = {
 			);
 		const event = webhookSchema.parse(JSON.parse(body));
 		const session = event.data.object;
-		const succeeded =
-			event.type === "checkout.session.completed" ||
-			event.type === "checkout.session.async_payment_succeeded";
 		return {
 			providerEventId: event.id,
-			providerPaymentId: session.id,
-			type: succeeded
-				? "payment_succeeded"
-				: event.type === "checkout.session.expired"
-					? "payment_expired"
-					: "payment_failed",
+			providerPaymentId: session.id ?? "",
+			type: stripeEventType(event.type, session.payment_status),
 			amountMinor: session.amount_total?.toString() ?? null,
 			currency: session.currency?.toUpperCase() ?? null,
 			payloadDigest: await sha256Hex(body),

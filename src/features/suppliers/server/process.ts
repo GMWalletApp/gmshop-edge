@@ -142,6 +142,7 @@ async function processSupplierOrderUnlocked(
 				"supplier_locked_account_unavailable",
 				409,
 				"Locked supplier account unavailable",
+				{ retryable: true },
 			);
 		const adapter = await adapterForSupplierAccount(account, runtime, {
 			revision: order.selected_credentials_revision,
@@ -241,6 +242,7 @@ async function processSupplierOrderUnlocked(
 							"supplier_order_claim_conflict",
 							409,
 							"Supplier order was claimed concurrently",
+							{ retryable: true },
 						);
 					await db
 						.prepare(

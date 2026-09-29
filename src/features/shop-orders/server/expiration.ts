@@ -1,3 +1,6 @@
+import { orderStateGuard } from "#/features/shop-orders/server/order-guard";
+import { releaseOrderReservationStatements } from "#/features/shop-orders/server/reservation-release";
+
 export async function expireStoreOrders(
 	db: D1Database,
 	now = Date.now(),
@@ -22,28 +25,13 @@ export async function expireStoreOrders(
 				 AND expires_at <= ?`,
 				)
 				.bind(now, nextVersion, now, order.id, order.version, now),
-			db
-				.prepare(
-					`UPDATE coupons SET used_count = MAX(0, used_count - 1), updated_at = ?
-				 WHERE id = (SELECT coupon_id FROM coupon_redemptions WHERE order_id = ?
-				  AND status = 'reserved' LIMIT 1)
-				 AND EXISTS (SELECT 1 FROM shop_orders WHERE id = ? AND status = 'expired' AND version = ?)`,
-				)
-				.bind(now, order.id, order.id, nextVersion),
-			db
-				.prepare(
-					`UPDATE coupon_redemptions SET status = 'released', released_at = ?, updated_at = ?
-				 WHERE order_id = ? AND status = 'reserved'
-				 AND EXISTS (SELECT 1 FROM shop_orders WHERE id = ? AND status = 'expired' AND version = ?)`,
-				)
-				.bind(now, now, order.id, order.id, nextVersion),
-			db
-				.prepare(
-					`UPDATE payment_attempts SET status = 'expired', failure_code = 'order_expired',
-				 updated_at = ? WHERE order_id = ? AND status IN ('created', 'pending')
-				 AND EXISTS (SELECT 1 FROM shop_orders WHERE id = ? AND status = 'expired' AND version = ?)`,
-				)
-				.bind(now, order.id, order.id, nextVersion),
+			...releaseOrderReservationStatements(
+				db,
+				order.id,
+				now,
+				orderStateGuard(order.id, "expired", nextVersion),
+				"order_expired",
+			),
 			db
 				.prepare(
 					`INSERT INTO shop_order_events

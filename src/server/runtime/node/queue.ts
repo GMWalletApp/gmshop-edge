@@ -114,6 +114,21 @@ export class NodeDurableQueue<T = unknown> implements RuntimeQueue<T> {
 		this.statements.ack.run(id, this.name, leaseToken);
 	}
 
+	extendLease(
+		id: string,
+		leaseToken: string,
+		leaseExpiresAt: number,
+		now: number,
+	) {
+		this.statements.extendLease.run(
+			leaseExpiresAt,
+			now,
+			id,
+			this.name,
+			leaseToken,
+		);
+	}
+
 	retry(
 		message: StoredQueueMessage,
 		options: {
@@ -256,6 +271,22 @@ export class NodeQueueConsumer<T> {
 	private async process(stored: StoredQueueMessage) {
 		const disposition: Disposition = { kind: "pending" };
 		let error: unknown;
+		// Handlers that outlive the lease (several provider calls with 10 s
+		// timeouts) must not be re-claimed by another poll while still running.
+		const leaseMs = this.options.leaseMs ?? 60_000;
+		const heartbeat = setInterval(
+			() => {
+				const now = (this.options.now ?? Date.now)();
+				this.queue.extendLease(
+					stored.id,
+					stored.lease_token,
+					now + leaseMs,
+					now,
+				);
+			},
+			Math.max(1_000, Math.floor(leaseMs / 3)),
+		);
+		heartbeat.unref?.();
 		try {
 			const message: NodeQueueMessage<T> = {
 				id: stored.id,
@@ -281,6 +312,8 @@ export class NodeQueueConsumer<T> {
 		} catch (caught) {
 			error = caught;
 			disposition.kind = "retry";
+		} finally {
+			clearInterval(heartbeat);
 		}
 		if (disposition.kind === "ack") {
 			this.queue.ack(stored.id, stored.lease_token);
@@ -339,6 +372,10 @@ function prepareQueueStatements(database: NodeDatabase) {
 		),
 		ack: database.sqlite.prepare(
 			"DELETE FROM node_queue_messages WHERE id = ? AND queue = ? AND status = 'leased' AND lease_token = ?",
+		),
+		extendLease: database.sqlite.prepare(
+			`UPDATE node_queue_messages SET lease_expires_at = ?, updated_at = ?
+			 WHERE id = ? AND queue = ? AND status = 'leased' AND lease_token = ?`,
 		),
 		retry: database.sqlite.prepare(
 			`UPDATE node_queue_messages SET status = ?, available_at = ?,

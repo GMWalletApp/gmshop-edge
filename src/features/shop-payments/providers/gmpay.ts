@@ -6,6 +6,7 @@ import { DomainError } from "#/lib/domain-error";
 import { minorToDecimal } from "#/lib/units";
 import {
 	checkEpusdtHealth,
+	epusdtFetch,
 	epusdtMerchantOrderId,
 	epusdtUrl,
 	manualRefundMethods,
@@ -79,7 +80,7 @@ export const gmpayPaymentProvider: PaymentProviderAdapter = {
 			params.network = input.defaultNetwork;
 		}
 		params.signature = await signGmpay(params, credential.secretKey);
-		const response = await fetcher(
+		const response = await epusdtFetch(
 			epusdtUrl(
 				credential.baseUrl,
 				"/payments/gmpay/v1/order/create-transaction",
@@ -88,8 +89,8 @@ export const gmpayPaymentProvider: PaymentProviderAdapter = {
 				method: "POST",
 				headers: { "Content-Type": "application/x-www-form-urlencoded" },
 				body: new URLSearchParams(params),
-				signal: AbortSignal.timeout(10_000),
 			},
+			fetcher,
 		);
 		const result = createResponseSchema.parse(await parseEpusdtJson(response));
 		return {
@@ -111,9 +112,7 @@ export const gmpayPaymentProvider: PaymentProviderAdapter = {
 		);
 		url.search = new URLSearchParams(params).toString();
 		const result = queryResponseSchema.parse(
-			await parseEpusdtJson(
-				await fetcher(url, { signal: AbortSignal.timeout(10_000) }),
-			),
+			await parseEpusdtJson(await epusdtFetch(url, {}, fetcher)),
 		);
 		return {
 			status:
@@ -158,7 +157,9 @@ export const gmpayPaymentProvider: PaymentProviderAdapter = {
 				"Invalid payment credential",
 			);
 		return {
-			providerEventId: `gmpay:${event.trade_id}:${event.block_transaction_id || event.status}`,
+			// A confirming and a paid notification for the same on-chain transaction
+			// must not collide, so the status is always part of the identifier.
+			providerEventId: `gmpay:${event.trade_id}:${event.status}:${event.block_transaction_id}`,
 			providerPaymentId: event.trade_id,
 			type:
 				event.status === "paid" || event.status === "overpaid"
@@ -180,9 +181,18 @@ export const gmpayPaymentProvider: PaymentProviderAdapter = {
 	...manualRefundMethods,
 	async checkHealth(rawCredential, fetcher = fetch) {
 		const credential = gmpayCredentialSchema.parse(rawCredential);
-		const response = await fetcher(epusdtUrl(credential.baseUrl, "/healthz"), {
-			signal: AbortSignal.timeout(10_000),
-		});
-		if (!response.ok) await checkEpusdtHealth(credential, fetcher);
+		let healthy = false;
+		try {
+			healthy = (
+				await epusdtFetch(
+					epusdtUrl(credential.baseUrl, "/healthz"),
+					{},
+					fetcher,
+				)
+			).ok;
+		} catch {
+			healthy = false;
+		}
+		if (!healthy) await checkEpusdtHealth(credential, fetcher);
 	},
 };

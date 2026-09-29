@@ -1,6 +1,16 @@
 import type { ShopOrderStatus } from "#/features/shop-orders/schema";
+import { orderStateGuard } from "#/features/shop-orders/server/order-guard";
+import { releaseOrderReservationStatements } from "#/features/shop-orders/server/reservation-release";
 import { assertShopOrderTransition } from "#/features/shop-orders/status";
+import { completeManualStoreOrder } from "#/features/shop-payments/server/service";
 import { DomainError } from "#/lib/domain-error";
+import { clientIp } from "#/server/client-ip";
+
+const paymentReleasingStatuses = new Set<ShopOrderStatus>([
+	"cancelled",
+	"expired",
+	"failed",
+]);
 
 export async function transitionShopOrder(
 	db: D1Database,
@@ -26,8 +36,22 @@ export async function transitionShopOrder(
 			"Order changed; refresh and retry",
 		);
 	assertShopOrderTransition(order.status, input.toStatus);
+	// Marking an order paid must produce the same stock reservation, delivery,
+	// entitlement and outbox rows as a provider payment.
+	if (input.toStatus === "paid")
+		return completeManualStoreOrder(db, {
+			orderId: input.id,
+			version: input.version,
+			actorUserId: input.actorUserId,
+			note: input.note,
+			ipAddress: clientIp(input.request),
+			requestId: input.request?.headers.get("x-request-id") ?? null,
+		});
 	const now = Date.now();
 	const nextVersion = input.version + 1;
+	const releasesPayment =
+		order.status === "pending_payment" &&
+		paymentReleasingStatuses.has(input.toStatus);
 	const results = await db.batch([
 		db
 			.prepare(
@@ -107,6 +131,17 @@ export async function transitionShopOrder(
 			toVersion: nextVersion,
 			now,
 		}),
+		// Leaving pending_payment through cancel/expire/fail releases the same
+		// reservations as automatic expiry.
+		...(releasesPayment
+			? releaseOrderReservationStatements(
+					db,
+					input.id,
+					now,
+					orderStateGuard(input.id, input.toStatus, nextVersion),
+					"order_closed",
+				)
+			: []),
 	]);
 	if (Number(results[0]?.meta.changes ?? 0) !== 1)
 		throw new DomainError(
@@ -147,7 +182,7 @@ function transitionAuditStatement(
 			crypto.randomUUID(),
 			actorUserId,
 			request?.headers.get("x-request-id") ?? null,
-			request?.headers.get("cf-connecting-ip") ?? null,
+			clientIp(request),
 			JSON.stringify({
 				status: transition.fromStatus,
 				version: transition.fromVersion,

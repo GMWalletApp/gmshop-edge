@@ -3,6 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import type { z } from "zod";
 import { createWalletTopupPayment } from "#/features/shop-payments/server/service";
 import { resolveStoreAccount } from "#/features/storefront/server/account";
+import { clientIp } from "#/server/client-ip";
 import { getDb } from "#/server/db.server";
 import { walletTopupSchema } from "../schema";
 import { getWallet } from "./ledger";
@@ -33,6 +34,6 @@ export const createWalletTopupFn = createServerFn({ method: "POST" })
 			paymentCurrency: data.paymentCurrency,
 			successUrl: returnUrl,
 			cancelUrl: returnUrl,
-			payerIp: request.headers.get("cf-connecting-ip"),
+			payerIp: clientIp(request),
 		});
 	});

@@ -193,18 +193,47 @@ describe("Cryptomus payment provider", () => {
 		).rejects.toMatchObject({ code: "payment_refund_manual_required" });
 	});
 
-	it("matches the verified webhook slash-normalization behavior", async () => {
+	it("verifies the PHP json_encode canonical form, which escapes slashes", async () => {
+		const unsigned = {
+			...webhookFixture,
+			additional_data: "https://shop.example/orders/GM100001",
+		};
+		const phpCanonical = JSON.stringify(unsigned).replaceAll("/", "\\/");
+		const body = JSON.stringify({
+			...unsigned,
+			sign: cryptomusSign(phpCanonical, paymentApiKey),
+		});
+		await expect(parseWebhook(body)).resolves.toMatchObject({
+			type: "payment_succeeded",
+		});
+	});
+
+	it("accepts the plain JSON canonical form for gateways that do not escape slashes", async () => {
+		const unsigned = {
+			...webhookFixture,
+			additional_data: "https://shop.example/orders/GM100001",
+		};
+		const body = JSON.stringify({
+			...unsigned,
+			sign: cryptomusSign(JSON.stringify(unsigned), paymentApiKey),
+		});
+		await expect(parseWebhook(body)).resolves.toMatchObject({
+			type: "payment_succeeded",
+		});
+	});
+
+	it("rejects a signature computed over a corrupted canonical form", async () => {
 		const unsigned = {
 			...webhookFixture,
 			additional_data: "folder\\item",
 		};
-		const normalized = JSON.stringify(unsigned).replaceAll("\\", "/");
+		const corrupted = JSON.stringify(unsigned).replaceAll("\\", "/");
 		const body = JSON.stringify({
 			...unsigned,
-			sign: cryptomusSign(normalized, paymentApiKey),
+			sign: cryptomusSign(corrupted, paymentApiKey),
 		});
-		await expect(parseWebhook(body)).resolves.toMatchObject({
-			type: "payment_succeeded",
+		await expect(parseWebhook(body)).rejects.toMatchObject({
+			code: "invalid_payment_signature",
 		});
 	});
 });

@@ -605,6 +605,7 @@ export const commerceEvents = sqliteTable(
 			table.createdAt,
 			table.id,
 		),
+		index("commerce_events_order_type_idx").on(table.orderId, table.eventType),
 		check(
 			"commerce_events_amount_check",
 			sql`${table.amountMinor} IS NULL OR (${moneyCheck(table.amountMinor)})`,
@@ -932,6 +933,7 @@ export const walletEntries = sqliteTable(
 			table.createdAt,
 			table.id,
 		),
+		index("wallet_entries_source_idx").on(table.sourceType, table.sourceId),
 		check("wallet_entries_amount_check", moneyCheck(table.amountMinor)),
 		check("wallet_entries_before_check", moneyCheck(table.balanceBeforeMinor)),
 		check("wallet_entries_after_check", moneyCheck(table.balanceAfterMinor)),
@@ -1231,6 +1233,10 @@ export const customerEntitlements = sqliteTable(
 			table.status,
 			table.createdAt,
 			table.id,
+		),
+		index("customer_entitlements_status_expiry_idx").on(
+			table.status,
+			table.expiresAt,
 		),
 		check(
 			"customer_entitlements_type_check",
@@ -1564,6 +1570,7 @@ export const supplierOrders = sqliteTable(
 			table.selectedAccountId,
 			table.upstreamOrderId,
 		),
+		index("supplier_orders_order_idx").on(table.orderId),
 		check("supplier_orders_quantity_check", sql`${table.quantity} > 0`),
 		check(
 			"supplier_orders_quoted_cost_check",
@@ -2013,6 +2020,7 @@ export const refunds = sqliteTable(
 			table.createdAt,
 			table.id,
 		),
+		index("refunds_status_updated_idx").on(table.status, table.updatedAt),
 		check(
 			"refunds_amount_check",
 			sql`${moneyCheck(table.amountMinor)} AND ${table.amountMinor} <> '0'`,
