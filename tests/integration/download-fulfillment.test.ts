@@ -4,10 +4,31 @@ import { createDownloadAsset } from "#/features/fulfillment/server/download-asse
 import { storeDownloadResponse } from "#/features/storefront/server/download-response";
 import { applyMigrations } from "./migrations";
 
+function isR2Bucket(value: unknown): value is R2Bucket {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"put" in value &&
+		typeof value.put === "function" &&
+		"get" in value &&
+		typeof value.get === "function" &&
+		"delete" in value &&
+		typeof value.delete === "function" &&
+		"head" in value &&
+		typeof value.head === "function" &&
+		"list" in value &&
+		typeof value.list === "function" &&
+		"createMultipartUpload" in value &&
+		typeof value.createMultipartUpload === "function" &&
+		"resumeMultipartUpload" in value &&
+		typeof value.resumeMultipartUpload === "function"
+	);
+}
+
 describe("private download fulfillment", { timeout: 30_000 }, () => {
 	let miniflare: Miniflare;
 	let database: D1Database;
-	let bucket: Awaited<ReturnType<Miniflare["getR2Bucket"]>>;
+	let bucket: R2Bucket;
 
 	beforeAll(async () => {
 		miniflare = new Miniflare({
@@ -17,7 +38,9 @@ describe("private download fulfillment", { timeout: 30_000 }, () => {
 			r2Buckets: ["FILES"],
 		});
 		database = await miniflare.getD1Database("DB");
-		bucket = await miniflare.getR2Bucket("FILES");
+		const binding: unknown = await miniflare.getR2Bucket("FILES");
+		if (!isR2Bucket(binding)) throw new Error("FILES must be an R2 bucket");
+		bucket = binding;
 		await applyMigrations(database);
 		await seed(database);
 	});
@@ -106,7 +129,7 @@ describe("private download fulfillment", { timeout: 30_000 }, () => {
 
 async function download(
 	database: D1Database,
-	bucket: Awaited<ReturnType<Miniflare["getR2Bucket"]>>,
+	bucket: R2Bucket,
 	assetId: string,
 	email = "buyer@example.com",
 ) {
@@ -122,9 +145,7 @@ async function download(
 	);
 }
 
-async function responseBucket(
-	bucket: Awaited<ReturnType<Miniflare["getR2Bucket"]>>,
-) {
+async function responseBucket(bucket: R2Bucket) {
 	return {
 		async get(key: string) {
 			const object = await bucket.get(key);

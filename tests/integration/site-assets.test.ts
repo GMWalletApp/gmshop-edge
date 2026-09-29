@@ -7,10 +7,31 @@ import {
 import { loadSiteBrand } from "#/features/settings/server/site-brand";
 import { applyMigrations } from "./migrations";
 
+function isR2Bucket(value: unknown): value is R2Bucket {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"put" in value &&
+		typeof value.put === "function" &&
+		"get" in value &&
+		typeof value.get === "function" &&
+		"delete" in value &&
+		typeof value.delete === "function" &&
+		"head" in value &&
+		typeof value.head === "function" &&
+		"list" in value &&
+		typeof value.list === "function" &&
+		"createMultipartUpload" in value &&
+		typeof value.createMultipartUpload === "function" &&
+		"resumeMultipartUpload" in value &&
+		typeof value.resumeMultipartUpload === "function"
+	);
+}
+
 describe("site asset storage", () => {
 	let miniflare: Miniflare;
 	let db: D1Database;
-	let bucket: Awaited<ReturnType<Miniflare["getR2Bucket"]>>;
+	let bucket: R2Bucket;
 	let cache: KVNamespace;
 
 	beforeAll(async () => {
@@ -22,7 +43,9 @@ describe("site asset storage", () => {
 			kvNamespaces: ["CACHE"],
 		});
 		db = await miniflare.getD1Database("DB");
-		bucket = await miniflare.getR2Bucket("FILES");
+		const binding: unknown = await miniflare.getR2Bucket("FILES");
+		if (!isR2Bucket(binding)) throw new Error("FILES must be an R2 bucket");
+		bucket = binding;
 		cache = (await miniflare.getKVNamespace("CACHE")) as unknown as KVNamespace;
 		await applyMigrations(db);
 		await db
