@@ -31,7 +31,7 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version-file: .bun-version
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -42,8 +42,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-1.3.14-${{ hashFiles('bun.lock') }}
-          restore-keys: ${{ runner.os }}-bun-1.3.14-
+          key: ${{ runner.os }}-bun-${{ hashFiles('.bun-version') }}-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-${{ hashFiles('.bun-version') }}-
 
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
@@ -54,6 +54,7 @@ jobs:
           bun run typecheck
           bun run test
           bun run check
+          bun run build
           bun run build:bun
 
       - name: Run semantic-release

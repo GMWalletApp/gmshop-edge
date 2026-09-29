@@ -13,7 +13,7 @@
 			"**/tests/**/*",
 			"**/.vscode/**/*",
 			"**/index.html",
-			"**/vite.config.ts",
+			"**/*.config.ts",
 			"!**/src/routeTree.gen.ts",
 			"!**/src/paraglide",
 			"!**/src/styles/global.css"

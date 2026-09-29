@@ -2,15 +2,15 @@
 
 import { diffLines } from "diff";
 import { useEffect, useMemo, useState } from "react";
-import {
-	type BundledLanguage,
-	bundledLanguages,
-	codeToTokensBase,
-	type ThemedToken,
-} from "shiki";
+import type { ThemedToken } from "shiki/core";
 import { cn } from "#/lib/utils";
 import { m } from "#/paraglide/messages";
 import { ProButton } from "../../base/button";
+import {
+	ensureHighlightLanguage,
+	getHighlighter,
+	getHighlightThemeName,
+} from "../../highlighter";
 
 interface DiffLine {
 	type: "added" | "removed" | "unchanged";
@@ -80,17 +80,21 @@ export function DiffViewer({
 
 	useEffect(() => {
 		let cancelled = false;
-		const normalizedLang = lang.toLowerCase();
-		const highlightLang = getBundledLanguage(normalizedLang);
-		Promise.all(
-			Array.from(new Set(unified.map((line) => line.content)), async (line) => {
-				const tokenLines = await codeToTokensBase(line || " ", {
-					lang: highlightLang,
-					theme: theme === "dark" ? "one-dark-pro" : "one-light",
-				});
-				return [line, renderTokenLinesHtml(tokenLines)] as const;
-			}),
-		)
+		getHighlighter()
+			.then(async (highlighter) => {
+				const highlightLang = await ensureHighlightLanguage(highlighter, lang);
+				const themeName = getHighlightThemeName(theme);
+				return Array.from(
+					new Set(unified.map((line) => line.content)),
+					(line) => {
+						const tokenLines = highlighter.codeToTokensBase(line || " ", {
+							lang: highlightLang,
+							theme: themeName,
+						});
+						return [line, renderTokenLinesHtml(tokenLines)] as const;
+					},
+				);
+			})
 			.then((entries) => {
 				if (!cancelled) setHtmlMap(new Map(entries));
 			})
@@ -190,14 +194,6 @@ export function DiffViewer({
 			)}
 		</div>
 	);
-}
-
-function getBundledLanguage(normalizedLang: string): BundledLanguage {
-	if (normalizedLang in bundledLanguages)
-		return normalizedLang as BundledLanguage;
-	if (normalizedLang === "typescript" || normalizedLang === "ts") return "tsx";
-	if (normalizedLang === "javascript" || normalizedLang === "js") return "jsx";
-	return "javascript";
 }
 
 function getDiffSign(type: DiffLine["type"]) {

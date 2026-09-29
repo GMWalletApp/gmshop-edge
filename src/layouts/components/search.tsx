@@ -1,8 +1,8 @@
 import { SearchIcon } from "lucide-react";
 import { Button } from "#/components/ui/button";
-import { useSearch } from "@/context/search-provider";
-import { cn } from "@/lib/utils";
-import { m } from "@/paraglide/messages";
+import { useSearch } from "#/context/search-provider";
+import { cn } from "#/lib/utils";
+import { m } from "#/paraglide/messages";
 
 export function Search({
 	className = "",

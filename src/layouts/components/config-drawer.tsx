@@ -8,17 +8,17 @@ import {
 } from "lucide-react";
 import { RadioGroup as RadioGroupPrimitive } from "radix-ui";
 import type { ComponentProps, ReactNode, SVGProps } from "react";
-import { IconDir } from "@/assets/custom/icon-dir";
-import { IconLayoutCompact } from "@/assets/custom/icon-layout-compact";
-import { IconLayoutDefault } from "@/assets/custom/icon-layout-default";
-import { IconLayoutFull } from "@/assets/custom/icon-layout-full";
-import { IconSidebarFloating } from "@/assets/custom/icon-sidebar-floating";
-import { IconSidebarInset } from "@/assets/custom/icon-sidebar-inset";
-import { IconSidebarSidebar } from "@/assets/custom/icon-sidebar-sidebar";
-import { IconThemeDark } from "@/assets/custom/icon-theme-dark";
-import { IconThemeLight } from "@/assets/custom/icon-theme-light";
-import { IconThemeSystem } from "@/assets/custom/icon-theme-system";
-import { Button } from "@/components/ui/button";
+import { IconDir } from "#/assets/custom/icon-dir";
+import { IconLayoutCompact } from "#/assets/custom/icon-layout-compact";
+import { IconLayoutDefault } from "#/assets/custom/icon-layout-default";
+import { IconLayoutFull } from "#/assets/custom/icon-layout-full";
+import { IconSidebarFloating } from "#/assets/custom/icon-sidebar-floating";
+import { IconSidebarInset } from "#/assets/custom/icon-sidebar-inset";
+import { IconSidebarSidebar } from "#/assets/custom/icon-sidebar-sidebar";
+import { IconThemeDark } from "#/assets/custom/icon-theme-dark";
+import { IconThemeLight } from "#/assets/custom/icon-theme-light";
+import { IconThemeSystem } from "#/assets/custom/icon-theme-system";
+import { Button } from "#/components/ui/button";
 import {
 	Sheet,
 	SheetContent,
@@ -27,13 +27,13 @@ import {
 	SheetHeader,
 	SheetTitle,
 	SheetTrigger,
-} from "@/components/ui/sheet";
-import { useSidebar } from "@/components/ui/sidebar";
-import { type Direction, useDirection } from "@/context/direction-provider";
-import { type Collapsible, useLayout } from "@/context/layout-provider";
-import { useTheme } from "@/context/theme-provider";
-import { cn } from "@/lib/utils";
-import { m } from "@/paraglide/messages";
+} from "#/components/ui/sheet";
+import { useSidebar } from "#/components/ui/sidebar";
+import { type Direction, useDirection } from "#/context/direction-provider";
+import { type Collapsible, useLayout } from "#/context/layout-provider";
+import { useTheme } from "#/context/theme-provider";
+import { cn } from "#/lib/utils";
+import { m } from "#/paraglide/messages";
 
 type ConfigDrawerProps = ComponentProps<typeof Sheet> & {
 	trigger?: ReactNode;

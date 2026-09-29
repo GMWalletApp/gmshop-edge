@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM oven/bun:1.3.14-alpine AS build
+FROM oven/bun:1.4.2-alpine AS build
 
 ENV CI=true
 
@@ -13,7 +13,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
 COPY --link . .
 RUN bun run build:bun
 
-FROM oven/bun:1.3.14-alpine AS runtime
+FROM oven/bun:1.4.2-alpine AS runtime
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \

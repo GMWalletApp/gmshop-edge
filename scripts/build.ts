@@ -1,6 +1,9 @@
+/// <reference types="bun-types-no-globals/lib/index.d.ts" />
+
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { JSONC } from "bun";
 
 type WranglerConfig = {
 	name?: string;
@@ -209,7 +212,7 @@ async function bindGeneratedStorage(
 }
 
 async function buildForWorkers(): Promise<void> {
-	const config = JSON.parse(
+	const config = JSONC.parse(
 		await readFile(wranglerConfigPath, "utf8"),
 	) as WranglerConfig;
 	const database = config.d1_databases?.find(

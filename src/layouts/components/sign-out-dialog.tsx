@@ -1,7 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
+import { authClient } from "#/features/auth/auth-client";
 import { m } from "#/paraglide/messages";
-import { authClient } from "@/features/auth/auth-client";
-import { authStore } from "@/stores/auth-store";
+import { authStore } from "#/stores/auth-store";
 import { ConfirmDialog } from "./confirm-dialog";
 
 interface SignOutDialogProps {

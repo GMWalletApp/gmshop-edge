@@ -42,7 +42,6 @@ export function DirectionProvider({ children }: DirectionProviderProps) {
 	);
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useDirection() {
 	const context = useContext(DirectionContext);
 

@@ -25,11 +25,12 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { createHighlighter, type Highlighter } from "shiki";
+import type { HighlighterCore } from "shiki/core";
 import { cn } from "#/lib/utils";
 import { m } from "#/paraglide/messages";
 import { CopyButton, ProButton, type ProButtonSize } from "../base/button";
 import { useFullscreen } from "../base/hooks/use-fullscreen";
+import { getHighlighter, getHighlightThemeName } from "../highlighter";
 import { HtmlViewer } from "../viewer/html";
 import { MarkdownViewer } from "../viewer/markdown";
 
@@ -129,12 +130,11 @@ declare module "react/jsx-runtime" {
 }
 `;
 
-let highlighterPromise: Promise<Highlighter> | null = null;
 let wiredMonaco: Monaco | null = null;
 let hasRegisteredTsxTypes = false;
 
 async function applyShadcnTheme(monaco: Monaco, theme: EditorTheme) {
-	const name = theme === "dark" ? "one-dark-pro" : "one-light";
+	const name = getHighlightThemeName(theme);
 	const highlighter = await ensureShiki(monaco);
 	const base = textmateThemeToMonacoTheme(
 		highlighter.getTheme(name),
@@ -186,30 +186,8 @@ async function applyShadcnTheme(monaco: Monaco, theme: EditorTheme) {
 	monaco.editor.setTheme(name);
 }
 
-async function ensureShiki(monaco: Monaco): Promise<Highlighter> {
-	highlighterPromise ??= createHighlighter({
-		themes: ["one-dark-pro", "one-light"],
-		langs: [
-			"tsx",
-			"jsx",
-			"css",
-			"go",
-			"html",
-			"java",
-			"json",
-			"markdown",
-			"python",
-			"rust",
-			"shell",
-			"sql",
-			"yaml",
-		],
-		langAlias: {
-			typescript: "tsx",
-			javascript: "jsx",
-		},
-	});
-	const highlighter = await highlighterPromise;
+async function ensureShiki(monaco: Monaco): Promise<HighlighterCore> {
+	const highlighter = await getHighlighter();
 	if (wiredMonaco !== monaco) {
 		shikiToMonaco(highlighter, monaco);
 		wiredMonaco = monaco;

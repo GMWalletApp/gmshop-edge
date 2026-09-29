@@ -1,6 +1,6 @@
 import { ChevronsUpDown, KeyRound, LogOut, Settings } from "lucide-react";
 import { useState } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "#/components/ui/avatar";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -8,17 +8,17 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "#/components/ui/dropdown-menu";
 import {
 	SidebarMenu,
 	SidebarMenuButton,
 	SidebarMenuItem,
 	useSidebar,
-} from "@/components/ui/sidebar";
-import { useDirection } from "@/context/direction-provider";
-import useDialogState from "@/hooks/use-dialog-state";
-import { m } from "@/paraglide/messages";
-import { type AuthUser, useAuthUser } from "@/stores/auth-store";
+} from "#/components/ui/sidebar";
+import { useDirection } from "#/context/direction-provider";
+import useDialogState from "#/hooks/use-dialog-state";
+import { m } from "#/paraglide/messages";
+import { type AuthUser, useAuthUser } from "#/stores/auth-store";
 import { ChangePasswordDialog } from "./change-password-dialog";
 import { ConfigDrawer } from "./config-drawer";
 import { SignOutDialog } from "./sign-out-dialog";

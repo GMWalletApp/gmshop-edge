@@ -1,9 +1,9 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { SignIn } from "#/features/auth/pages/sign-in";
 import { safePostAuthRedirect } from "#/features/auth/post-auth-redirect";
 import { getInstallStatus } from "#/features/installation/server/functions";
 import { createDefaultSeoHead, siteNameFromMatches } from "#/lib/seo";
 import { m } from "#/paraglide/messages";
-import { SignIn } from "@/features/auth/pages/sign-in";
 
 export const Route = createFileRoute("/(auth)/sign-in")({
 	head: ({ matches }) => {

@@ -2,15 +2,15 @@
 
 import { ChevronRight, Copy } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import {
-	type BundledLanguage,
-	bundledLanguages,
-	codeToTokensBase,
-	type ThemedToken,
-} from "shiki";
+import type { ThemedToken } from "shiki/core";
 import { cn } from "#/lib/utils";
 import { m } from "#/paraglide/messages";
 import { CopyButton, ProButton } from "../../base/button";
+import {
+	ensureHighlightLanguage,
+	getHighlighter,
+	getHighlightThemeName,
+} from "../../highlighter";
 
 interface CodeLine {
 	index: number;
@@ -116,8 +116,6 @@ export function CodeViewer({
 
 	useEffect(() => {
 		let cancelled = false;
-		const normalizedLang = lang.toLowerCase();
-		const highlightLang = getBundledLanguage(normalizedLang);
 
 		setStatus("loading");
 		setCollapsed(new Set());
@@ -127,10 +125,13 @@ export function CodeViewer({
 			setStatus("ready");
 			return;
 		}
-		codeToTokensBase(code, {
-			lang: highlightLang,
-			theme: theme === "dark" ? "one-dark-pro" : "one-light",
-		})
+		getHighlighter()
+			.then(async (highlighter) =>
+				highlighter.codeToTokensBase(code, {
+					lang: await ensureHighlightLanguage(highlighter, lang),
+					theme: getHighlightThemeName(theme),
+				}),
+			)
 			.then((result) => {
 				if (!cancelled) setTokenLines(result);
 			})
@@ -282,14 +283,6 @@ function CodeLinesTable({
 			</tbody>
 		</table>
 	);
-}
-
-function getBundledLanguage(normalizedLang: string): BundledLanguage {
-	if (normalizedLang in bundledLanguages)
-		return normalizedLang as BundledLanguage;
-	if (normalizedLang === "typescript" || normalizedLang === "ts") return "tsx";
-	if (normalizedLang === "javascript" || normalizedLang === "js") return "jsx";
-	return "javascript";
 }
 
 function getCodeStatusText(status: "idle" | "loading" | "ready" | "error") {

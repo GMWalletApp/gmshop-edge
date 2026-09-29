@@ -1,8 +1,8 @@
 import { toast } from "sonner";
-import { ModalForm, ProSchemaForm } from "@/components/pro/form";
-import { authClient } from "@/features/auth/auth-client";
-import { changePasswordErrorMessage } from "@/features/auth/error-message";
-import { m } from "@/paraglide/messages";
+import { ModalForm, ProSchemaForm } from "#/components/pro/form";
+import { authClient } from "#/features/auth/auth-client";
+import { changePasswordErrorMessage } from "#/features/auth/error-message";
+import { m } from "#/paraglide/messages";
 
 export function ChangePasswordDialog({
 	open,
