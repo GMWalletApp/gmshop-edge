@@ -53,8 +53,6 @@ export async function handleDujiaoSupplierCallback(
 		throw error;
 	}
 	const rawBody = new TextDecoder().decode(raw);
-	if (!(await claimSupplierCallbackBudget(db, accountId, now)))
-		return rejected("rate_limited");
 	const apiKey = request.headers.get("Dujiao-Next-Api-Key") ?? "";
 	const timestampHeader = request.headers.get("Dujiao-Next-Timestamp") ?? "";
 	const signature = request.headers.get("Dujiao-Next-Signature") ?? "";
@@ -91,6 +89,10 @@ export async function handleDujiaoSupplierCallback(
 	});
 	if (!constantTimeEqual(signature.toLowerCase(), expected))
 		return rejected("authentication_failed");
+	// Only authenticated callbacks consume the per-account budget; forged
+	// requests must not be able to starve the real supplier.
+	if (!(await claimSupplierCallbackBudget(db, accountId, now)))
+		return rejected("rate_limited");
 	let payload: z.infer<typeof callbackSchema>;
 	try {
 		payload = callbackSchema.parse(JSON.parse(rawBody));

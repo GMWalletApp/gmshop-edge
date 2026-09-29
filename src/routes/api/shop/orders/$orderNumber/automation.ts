@@ -2,6 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createBuildJob } from "#/features/builds/server/jobs";
 import { publishPendingBuilds } from "#/features/builds/server/outbox";
 import { resolveStoreAccount } from "#/features/storefront/server/account";
+import {
+	BodyLimitExceededError,
+	readBoundedRequestJson,
+} from "#/lib/bounded-stream";
 import { DomainError } from "#/lib/domain-error";
 import { getEnv } from "#/server/db.server";
 
@@ -11,10 +15,11 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			POST: async ({ request, params }) => {
-				if (Number(request.headers.get("content-length") ?? 0) > 128 * 1024)
-					return Response.json({ code: "request_too_large" }, { status: 413 });
 				try {
-					const body: unknown = await request.json();
+					const body: unknown = await readBoundedRequestJson(
+						request,
+						128 * 1024,
+					);
 					const input =
 						typeof body === "object" && body !== null
 							? { ...body, orderNumber: params.orderNumber }
@@ -32,6 +37,14 @@ export const Route = createFileRoute(
 						headers: { "Cache-Control": "private, no-store" },
 					});
 				} catch (error) {
+					if (error instanceof BodyLimitExceededError)
+						return Response.json(
+							{ code: "request_too_large" },
+							{
+								status: 413,
+								headers: { "Cache-Control": "private, no-store" },
+							},
+						);
 					const status = error instanceof DomainError ? error.status : 400;
 					const code =
 						error instanceof DomainError ? error.code : "invalid_request";

@@ -26,7 +26,9 @@ export const Route = createFileRoute(
 								request.headers.get("content-type") ??
 								"application/octet-stream",
 						},
-						(await readBoundedRequestBytes(request, 100 * 1024 * 1024)).buffer,
+						async () =>
+							(await readBoundedRequestBytes(request, 100 * 1024 * 1024))
+								.buffer as ArrayBuffer,
 						request.headers.get("x-gmshop-signature") ?? "",
 					);
 					return Response.json(result, {

@@ -1,5 +1,9 @@
 import { resolveStoreAccount } from "#/features/storefront/server/account";
 import { revealStoreDelivery } from "#/features/storefront/server/delivery-reveal";
+import {
+	BodyLimitExceededError,
+	readBoundedRequestJson,
+} from "#/lib/bounded-stream";
 import { DomainError } from "#/lib/domain-error";
 
 export async function storeDeliveryRevealResponse(
@@ -8,10 +12,8 @@ export async function storeDeliveryRevealResponse(
 	deliveryId: string,
 	db: D1Database,
 ) {
-	if (Number(request.headers.get("content-length") ?? 0) > 4_096)
-		return Response.json({ code: "request_too_large" }, { status: 413 });
 	try {
-		const body: unknown = await request.json();
+		const body: unknown = await readBoundedRequestJson(request, 4_096);
 		const action =
 			typeof body === "object" && body !== null && "action" in body
 				? String(body.action)
@@ -32,6 +34,11 @@ export async function storeDeliveryRevealResponse(
 		});
 		return Response.json(result, { headers: privateHeaders });
 	} catch (error) {
+		if (error instanceof BodyLimitExceededError)
+			return Response.json(
+				{ code: "request_too_large" },
+				{ status: 413, headers: privateHeaders },
+			);
 		const status = error instanceof DomainError ? error.status : 400;
 		const code = error instanceof DomainError ? error.code : "invalid_request";
 		return Response.json({ code }, { status, headers: privateHeaders });

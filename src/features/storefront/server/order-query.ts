@@ -2,11 +2,79 @@ import { buildDefinitionListSchema } from "#/features/builds/schema";
 import { paymentCheckoutPresentation } from "#/features/shop-payments/providers";
 import { storeOrderLookupSchema } from "#/features/storefront/schema";
 import { DomainError } from "#/lib/domain-error";
+import { clientIp } from "#/server/client-ip";
+import {
+	claimFixedWindowRateLimit,
+	peekFixedWindowRateLimit,
+} from "#/server/rate-limit";
+
+const GUEST_LOOKUP_WINDOW_MS = 60_000;
+const GUEST_FAILURES_PER_CLIENT = 40;
+const GUEST_FAILURES_PER_ORDER = 15;
+
+/**
+ * Guest access proves ownership with order number + e-mail. Only failed proofs
+ * count against the requesting client and the targeted order number, so the
+ * e-mail cannot be enumerated for a leaked order number while a legitimate
+ * guest polling their own order page never consumes a budget.
+ */
+function guestLookupBuckets(request: Request | undefined, orderNumber: string) {
+	const ip = clientIp(request);
+	return [
+		{
+			bucketKey: `store-lookup:order:${orderNumber}`,
+			limit: GUEST_FAILURES_PER_ORDER,
+			windowMs: GUEST_LOOKUP_WINDOW_MS,
+		},
+		...(ip
+			? [
+					{
+						bucketKey: `store-lookup:ip:${ip}`,
+						limit: GUEST_FAILURES_PER_CLIENT,
+						windowMs: GUEST_LOOKUP_WINDOW_MS,
+					},
+				]
+			: []),
+	];
+}
+
+export async function assertGuestOrderLookupAllowed(
+	db: D1Database,
+	request: Request | undefined,
+	orderNumber: string,
+) {
+	const peeks = await Promise.all(
+		guestLookupBuckets(request, orderNumber).map((bucket) =>
+			peekFixedWindowRateLimit(db, bucket),
+		),
+	);
+	if (peeks.some((peek) => peek.exhausted)) throw lookupRateLimited();
+}
+
+export async function recordGuestOrderLookupFailure(
+	db: D1Database,
+	request: Request | undefined,
+	orderNumber: string,
+) {
+	await Promise.all(
+		guestLookupBuckets(request, orderNumber).map((bucket) =>
+			claimFixedWindowRateLimit(db, bucket),
+		),
+	);
+}
+
+function lookupRateLimited() {
+	return new DomainError(
+		"order_lookup_rate_limited",
+		429,
+		"Too many order lookups; try again later",
+	);
+}
 
 export async function getStoreOrder(
 	db: D1Database,
 	rawInput: unknown,
-	access: { userId?: string } = {},
+	access: { userId?: string; request?: Request } = {},
 ) {
 	const orderNumber = storeOrderLookupSchema.shape.orderNumber.parse(
 		(rawInput as { orderNumber?: unknown })?.orderNumber,
@@ -16,6 +84,8 @@ export async function getStoreOrder(
 		: storeOrderLookupSchema.shape.email.parse(
 				(rawInput as { email?: unknown })?.email,
 			);
+	if (guestEmail)
+		await assertGuestOrderLookupAllowed(db, access.request, orderNumber);
 	const orderSelection = `SELECT id, order_number, user_id, status, contact_email, normalized_contact_email, currency,
 			 currency_decimals, subtotal_minor, discount_minor, total_minor, paid_minor,
 			 expires_at, paid_at, completed_at, cancelled_at, refunded_at, created_at,
@@ -32,7 +102,11 @@ export async function getStoreOrder(
 				.prepare(`${orderSelection} WHERE order_number = ? LIMIT 1`)
 				.bind(orderNumber)
 				.first<Record<string, unknown>>();
-	if (!order) throw new DomainError("order_not_found", 404, "Order not found");
+	if (!order) {
+		if (guestEmail)
+			await recordGuestOrderLookupFailure(db, access.request, orderNumber);
+		throw new DomainError("order_not_found", 404, "Order not found");
+	}
 	if (access.userId) {
 		if (String(order.user_id) !== access.userId)
 			throw new DomainError("order_not_found", 404, "Order not found");

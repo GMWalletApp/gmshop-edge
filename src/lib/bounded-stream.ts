@@ -13,6 +13,18 @@ export async function readBoundedRequestBytes(
 	return readBoundedStream(request.body, maximumBytes);
 }
 
+/**
+ * Parse a JSON request body that must stay under `maximumBytes`, whether or not
+ * the client declared a Content-Length. An empty body parses as `{}`.
+ */
+export async function readBoundedRequestJson(
+	request: Request,
+	maximumBytes: number,
+): Promise<unknown> {
+	const text = await readBoundedRequestText(request, maximumBytes);
+	return text ? JSON.parse(text) : {};
+}
+
 export async function readBoundedRequestText(
 	request: Request,
 	maximumBytes: number,

@@ -3,11 +3,21 @@ const requestSettingsKeys = [
 	"runtime.better_auth_url",
 	"runtime.data_encryption_secret",
 	"security.allowed_hosts",
+	"security.client_ip_source",
 ] as const;
 
 type RequestSettings = ReadonlyMap<string, string>;
 
 const pendingSettings = new WeakMap<Request, Promise<RequestSettings>>();
+
+/**
+ * Reuse the settings already loaded for `source` when the entry point rewrites
+ * the request object (trusted client IP, forwarded protocol).
+ */
+export function carryRequestSettings(source: Request, target: Request) {
+	const pending = pendingSettings.get(source);
+	if (pending) pendingSettings.set(target, pending);
+}
 
 /**
  * Load request-scoped settings once so authority and Better Auth share one D1

@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type { supplierApiKeyCreateSchema } from "#/features/supplier-api/schema";
 import { DomainError } from "#/lib/domain-error";
 import { encryptSecret } from "#/lib/secrets";
+import { clientIp } from "#/server/client-ip";
 
 const maximumActiveKeys = 10;
 
@@ -126,7 +127,7 @@ function apiKeyAuditStatement(
 			userId,
 			input.action,
 			request.headers.get("x-request-id"),
-			request.headers.get("cf-connecting-ip"),
+			clientIp(request),
 			JSON.stringify(input.after),
 			input.now,
 			input.id,

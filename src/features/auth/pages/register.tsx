@@ -29,8 +29,15 @@ export function RegisterPage() {
 	);
 	const schema = z
 		.object({
-			name: z.string().trim().min(1).max(120),
-			email: z.email(),
+			name: z
+				.string()
+				.trim()
+				.min(1, m.auth_name_required())
+				.max(120, m.auth_name_too_long()),
+			email: z.email({
+				error: (issue) =>
+					issue.input === "" ? m.auth_email_required() : m.auth_email_invalid(),
+			}),
 			password: z.string().min(12, m.auth_password_min()),
 			confirmPassword: z.string(),
 		})

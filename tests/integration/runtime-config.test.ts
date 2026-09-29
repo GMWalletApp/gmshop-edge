@@ -129,6 +129,7 @@ describe("database-backed runtime configuration", () => {
 			"runtime.better_auth_url",
 			"runtime.data_encryption_secret",
 			"security.allowed_hosts",
+			"security.client_ip_source",
 		);
 	});
 });

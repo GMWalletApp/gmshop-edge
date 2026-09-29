@@ -30,7 +30,7 @@ describe("administrative audit context", () => {
 		const request = new Request("https://pay.example/admin/users", {
 			headers: {
 				"x-request-id": "request-user-update",
-				"cf-connecting-ip": "203.0.113.10",
+				"x-gmshop-client-ip": "203.0.113.10",
 			},
 		});
 		await createAuditStatement(database, request, "actor", {

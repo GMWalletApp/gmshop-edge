@@ -272,6 +272,7 @@ export async function processEmailNotification(
 			"notification_delivery_busy",
 			409,
 			"Notification delivery is already processing",
+			{ retryable: true },
 		);
 	let cloudflareBindingError: DomainError | null = null;
 	for (const config of configs) {

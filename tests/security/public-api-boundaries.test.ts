@@ -8,6 +8,34 @@ const id = "11111111-1111-4111-8111-111111111111";
 const orderNumber = "GMABC1234567";
 
 describe("signed and customer API boundaries", () => {
+	it("lets self-authenticating machine endpoints reach their handlers", () => {
+		for (const [path, method] of [
+			["/api/v1/supplier/ping", "POST"],
+			["/api/v1/supplier/products", "GET"],
+			["/api/v1/supplier/products/sku-1", "GET"],
+			["/api/v1/supplier/categories", "GET"],
+			["/api/v1/supplier/payment-channels", "GET"],
+			["/api/v1/supplier/orders", "POST"],
+			[`/api/v1/supplier/orders/${id}`, "GET"],
+			[`/api/v1/supplier/orders/${id}/cancel`, "POST"],
+			["/api/v1/supplier/topups", "POST"],
+			[`/api/v1/supplier/topups/${id}`, "GET"],
+			[`/api/suppliers/dujiao-next/callback/${id}`, "POST"],
+		] as const) {
+			expect(publicRequest(path, method), `${method} ${path}`).toBe(true);
+		}
+		for (const [path, method] of [
+			["/api/v1/supplier/orders", "GET"],
+			["/api/v1/supplier/products", "POST"],
+			["/api/v1/supplier/admin", "GET"],
+			["/api/v1/supplier/orders/../../admin", "POST"],
+			[`/api/suppliers/dujiao-next/callback/${id}`, "GET"],
+			["/api/suppliers/dujiao-next/callback/not-a-uuid", "POST"],
+		] as const) {
+			expect(publicRequest(path, method), `${method} ${path}`).toBe(false);
+		}
+	});
+
 	it("exposes only the current signed webhook and build callback routes", () => {
 		expect(publicRequest("/api/telegram/webhook", "POST")).toBe(true);
 		expect(publicRequest("/api/telegram/webhook", "GET")).toBe(false);

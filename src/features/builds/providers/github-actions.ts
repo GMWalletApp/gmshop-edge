@@ -7,7 +7,11 @@ import {
 import { DomainError } from "#/lib/domain-error";
 import { encryptSecret } from "#/lib/secrets";
 import { isSafeWebhookUrl } from "#/lib/webhook-url";
+import { fetchOutbound } from "#/server/outbound-fetch";
 import { loadRuntimeConfig } from "#/server/runtime-config";
+
+const providerTimeoutMs = 10_000;
+const maxProviderResponseBytes = 256 * 1024;
 
 type Job = {
 	id: string;
@@ -74,12 +78,37 @@ export async function dispatchBuild(
 		)
 		.bind(now, job.id, now)
 		.run();
-	if (Number(claimed.meta.changes ?? 0) !== 1)
+	if (Number(claimed.meta.changes ?? 0) !== 1) {
+		// A failed claim is either a concurrent dispatcher (retry later) or a job
+		// that can no longer be dispatched at all (exhausted attempts, terminal
+		// state, not yet due) — only the former is worth another attempt.
+		const current = await db
+			.prepare(
+				"SELECT status, attempt_count, next_attempt_at FROM automation_jobs WHERE id = ? LIMIT 1",
+			)
+			.bind(job.id)
+			.first<{
+				status: string;
+				attempt_count: number;
+				next_attempt_at: number | null;
+			}>();
+		const dispatchable =
+			current !== null &&
+			(current.status === "queued" || current.status === "failed") &&
+			current.attempt_count < 5;
+		if (!dispatchable)
+			throw new DomainError(
+				"automation_job_not_dispatchable",
+				409,
+				"Automation job can no longer be dispatched",
+			);
 		throw new DomainError(
 			"automation_job_busy",
 			409,
-			"Automation job is not dispatchable",
+			"Automation job is being dispatched by another worker",
+			{ retryable: true },
 		);
+	}
 	const runtime = await loadRuntimeConfig(db);
 	if (!runtime.commerceSecret || !runtime.betterAuthUrl)
 		throw new DomainError(
@@ -108,12 +137,20 @@ export async function dispatchBuild(
 	);
 	let response: Response;
 	try {
-		response = await fetcher(request.url, {
-			...request.init,
-			signal: AbortSignal.timeout(10_000),
+		response = await fetchOutbound(request.url, request.init, {
+			fetcher,
+			timeoutMs: providerTimeoutMs,
+			maxResponseBytes: maxProviderResponseBytes,
+			// Injected fetchers (tests) never reach the network; the real fetch
+			// must prove the administrator-configured host is public.
+			validateDestination: fetcher === fetch,
 		});
-	} catch {
-		await recordDispatchFailure(db, job, "provider_unreachable");
+	} catch (error) {
+		await recordDispatchFailure(
+			db,
+			job,
+			dispatchFailureCode(error instanceof DomainError ? error.code : null),
+		);
 		throw new DomainError(
 			"automation_provider_unreachable",
 			503,
@@ -350,6 +387,22 @@ function parseInputObject(value: string): Record<string, unknown> {
 		500,
 		"Automation input snapshot is invalid",
 	);
+}
+
+function dispatchFailureCode(outboundCode: string | null) {
+	switch (outboundCode) {
+		case "outbound_redirect_rejected":
+			return "provider_redirect_rejected";
+		case "outbound_destination_rejected":
+		case "outbound_url_rejected":
+			return "provider_destination_rejected";
+		case "outbound_dns_unavailable":
+			return "provider_dns_unavailable";
+		case "outbound_response_too_large":
+			return "provider_response_too_large";
+		default:
+			return "provider_unreachable";
+	}
 }
 
 async function recordDispatchFailure(db: D1Database, job: Job, code: string) {

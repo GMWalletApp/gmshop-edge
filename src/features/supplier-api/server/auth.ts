@@ -2,7 +2,11 @@ import { timingSafeEqual } from "node:crypto";
 import { signGmshopEdgeRequest } from "#/features/suppliers/providers/signatures";
 import { DomainError } from "#/lib/domain-error";
 import { decryptSecret } from "#/lib/secrets";
-import { claimFixedWindowRateLimit } from "#/server/rate-limit";
+import { clientIp } from "#/server/client-ip";
+import {
+	claimFixedWindowRateLimit,
+	peekFixedWindowRateLimit,
+} from "#/server/rate-limit";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 
 export type SupplierApiIdentity = {
@@ -49,6 +53,49 @@ export async function authenticateSupplierApi(
 			allowed_callback_origin: string | null;
 		}>();
 	if (!row) throw unauthorized();
+	const runtime = await loadRuntimeConfig(db);
+	if (!runtime.commerceSecret)
+		throw new DomainError(
+			"supplier_api_unavailable",
+			503,
+			"Supplier API unavailable",
+		);
+	// Forged requests are throttled by the client that sends them, so a flood
+	// on a public key id is refused cheaply while the key owner (a different
+	// client) keeps its full quota.
+	const forgerIp = clientIp(request);
+	const failureBucket = forgerIp
+		? {
+				bucketKey: `supplier-api:invalid:${forgerIp}`,
+				limit: 60,
+				windowMs: 60_000,
+				now,
+			}
+		: null;
+	if (
+		failureBucket &&
+		(await peekFixedWindowRateLimit(db, failureBucket)).exhausted
+	)
+		throw new DomainError("supplier_rate_limited", 429, "Rate limit exceeded");
+	const secret = await decryptSecret(
+		row.secret_encrypted,
+		runtime.commerceSecret,
+		"supplier-api-key",
+	);
+	const expected = signGmshopEdgeRequest({
+		method: request.method,
+		pathWithQuery: `${requestUrl.pathname}${requestUrl.search}`,
+		timestamp,
+		nonce,
+		rawBody,
+		apiSecret: secret,
+	});
+	if (!safeEqual(signature, expected)) {
+		if (failureBucket) await claimFixedWindowRateLimit(db, failureBucket);
+		throw unauthorized();
+	}
+	// Budgets are claimed only for correctly signed requests so that anyone
+	// who learns a public key id cannot exhaust its owner's quota.
 	const [keyBudget, userBudget] = await Promise.all([
 		claimFixedWindowRateLimit(db, {
 			bucketKey: `supplier-api:key:${row.id}`,
@@ -65,27 +112,6 @@ export async function authenticateSupplierApi(
 	]);
 	if (!keyBudget.allowed || !userBudget.allowed)
 		throw new DomainError("supplier_rate_limited", 429, "Rate limit exceeded");
-	const runtime = await loadRuntimeConfig(db);
-	if (!runtime.commerceSecret)
-		throw new DomainError(
-			"supplier_api_unavailable",
-			503,
-			"Supplier API unavailable",
-		);
-	const secret = await decryptSecret(
-		row.secret_encrypted,
-		runtime.commerceSecret,
-		"supplier-api-key",
-	);
-	const expected = signGmshopEdgeRequest({
-		method: request.method,
-		pathWithQuery: `${requestUrl.pathname}${requestUrl.search}`,
-		timestamp,
-		nonce,
-		rawBody,
-		apiSecret: secret,
-	});
-	if (!safeEqual(signature, expected)) throw unauthorized();
 	try {
 		await db.batch([
 			db

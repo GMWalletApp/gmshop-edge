@@ -14,7 +14,9 @@ import {
 } from "#/features/builds/secrets";
 import { DomainError } from "#/lib/domain-error";
 import { isSafeWebhookUrl } from "#/lib/webhook-url";
+import { clientIp } from "#/server/client-ip";
 import { getAdminServerContext } from "#/server/context";
+import { fetchOutbound } from "#/server/outbound-fetch";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 
 type SaveInput = z.input<typeof saveBuildConfigurationSchema>;
@@ -230,12 +232,17 @@ export const testBuildConfigurationFn = createServerFn({ method: "POST" })
 		const endpoint = buildProviderHealthUrl(config);
 		let response: Response;
 		try {
-			response = await fetch(endpoint, {
-				headers: buildProviderHealthHeaders(config.provider, credential),
-				redirect: "manual",
-				signal: AbortSignal.timeout(8_000),
-			});
-		} catch {
+			response = await fetchOutbound(
+				endpoint,
+				{ headers: buildProviderHealthHeaders(config.provider, credential) },
+				{ timeoutMs: 8_000, maxResponseBytes: 64 * 1024 },
+			);
+		} catch (error) {
+			if (
+				error instanceof DomainError &&
+				error.code === "outbound_redirect_rejected"
+			)
+				throw error;
 			throw new DomainError(
 				"automation_provider_unreachable",
 				502,
@@ -260,7 +267,7 @@ export const testBuildConfigurationFn = createServerFn({ method: "POST" })
 				currentUser.id,
 				data.id,
 				request.headers.get("x-request-id"),
-				request.headers.get("cf-connecting-ip"),
+				clientIp(request),
 				JSON.stringify({ healthy: true }),
 				Date.now(),
 			)
@@ -435,7 +442,7 @@ export async function saveBuildConfiguration(
 				context.actorUserId,
 				configId,
 				context.request?.headers.get("x-request-id") ?? null,
-				context.request?.headers.get("cf-connecting-ip") ?? null,
+				clientIp(context.request),
 				JSON.stringify({
 					provider: input.provider,
 					version,

@@ -11,6 +11,7 @@ import {
 } from "#/features/catalog/input-values";
 import { getStoreOrder } from "#/features/storefront/server/order-query";
 import { DomainError } from "#/lib/domain-error";
+import { clientIp } from "#/server/client-ip";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 
 const buildDispatchWindowMs = 86_400_000;
@@ -47,20 +48,18 @@ export async function createBuildJob(
 	access: { userId?: string; actorUserId?: string; request?: Request } = {},
 ) {
 	const input = createBuildJobSchema.parse(rawInput);
-	const existing = await db
-		.prepare(
-			"SELECT id, status, timeout_at FROM automation_jobs WHERE idempotency_key = ? LIMIT 1",
-		)
-		.bind(input.idempotencyKey)
-		.first<{ id: string; status: string; timeout_at: number }>();
-	if (existing)
-		return {
-			id: existing.id,
-			status: existing.status,
-			timeoutAt: existing.timeout_at,
-			duplicate: true,
-		};
+	// Authorize the order first and scope the client-chosen key to it, so a
+	// key can neither probe nor replay another customer's job.
 	const order = await getStoreOrder(db, input, access);
+	const idempotencyKey = `${order.id}:${input.idempotencyKey}`;
+	const existing = await findJobByIdempotencyKey(
+		db,
+		idempotencyKey,
+		// Keys issued before keys were scoped to the order still replay, but only
+		// against the same order.
+		{ legacyKey: input.idempotencyKey, orderId: order.id },
+	);
+	if (existing) return existing;
 	await assertBuildNotificationChannelAvailable(
 		db,
 		order.id,
@@ -297,7 +296,7 @@ export async function createBuildJob(
 				context.artifact_policy,
 				context.output_pattern,
 				callbackSecretEncrypted,
-				input.idempotencyKey,
+				idempotencyKey,
 				input.notificationChannel,
 				inputsJson,
 				sensitiveInputsJson,
@@ -416,19 +415,8 @@ export async function createBuildJob(
 	try {
 		results = await db.batch(statements);
 	} catch (error) {
-		const replay = await db
-			.prepare(
-				"SELECT id, status, timeout_at FROM automation_jobs WHERE idempotency_key = ? LIMIT 1",
-			)
-			.bind(input.idempotencyKey)
-			.first<{ id: string; status: string; timeout_at: number }>();
-		if (replay)
-			return {
-				id: replay.id,
-				status: replay.status,
-				timeoutAt: replay.timeout_at,
-				duplicate: true,
-			};
+		const replay = await findJobByIdempotencyKey(db, idempotencyKey);
+		if (replay) return replay;
 		throw error;
 	}
 	if (Number(results[0]?.meta.changes ?? 0) !== 1)
@@ -438,6 +426,36 @@ export async function createBuildJob(
 			"Build quota is exhausted",
 		);
 	return { id: jobId, status: "queued", timeoutAt, duplicate: false };
+}
+
+async function findJobByIdempotencyKey(
+	db: D1Database,
+	idempotencyKey: string,
+	legacy?: { legacyKey: string; orderId: string },
+) {
+	const job = legacy
+		? await db
+				.prepare(
+					`SELECT jobs.id, jobs.status, jobs.timeout_at FROM automation_jobs jobs
+					 JOIN shop_order_items items ON items.id = jobs.order_item_id
+					 WHERE jobs.idempotency_key IN (?, ?) AND items.order_id = ? LIMIT 1`,
+				)
+				.bind(idempotencyKey, legacy.legacyKey, legacy.orderId)
+				.first<{ id: string; status: string; timeout_at: number }>()
+		: await db
+				.prepare(
+					"SELECT id, status, timeout_at FROM automation_jobs WHERE idempotency_key = ? LIMIT 1",
+				)
+				.bind(idempotencyKey)
+				.first<{ id: string; status: string; timeout_at: number }>();
+	return job
+		? {
+				id: job.id,
+				status: job.status,
+				timeoutAt: job.timeout_at,
+				duplicate: true as const,
+			}
+		: null;
 }
 
 async function assertBuildNotificationChannelAvailable(
@@ -491,7 +509,7 @@ function buildAuditStatement(
 			input.targetType,
 			input.targetId,
 			access.request?.headers.get("x-request-id") ?? null,
-			access.request?.headers.get("cf-connecting-ip") ?? null,
+			clientIp(access.request),
 			input.before == null ? null : JSON.stringify(input.before),
 			input.after == null ? null : JSON.stringify(input.after),
 			Date.now(),

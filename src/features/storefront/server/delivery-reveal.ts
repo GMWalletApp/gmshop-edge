@@ -3,6 +3,7 @@ import { consumeEntitlementAccess } from "#/features/entitlements/server/ledger"
 import { decryptDeliveryContent } from "#/features/fulfillment/secrets";
 import { getStoreOrder } from "#/features/storefront/server/order-query";
 import { DomainError } from "#/lib/domain-error";
+import { clientIp } from "#/server/client-ip";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 
 const revealSchema = z.object({
@@ -25,7 +26,7 @@ export async function revealStoreDelivery(
 	const order = await getStoreOrder(
 		db,
 		{ orderNumber: input.orderNumber, email: input.email },
-		{ userId: input.userId },
+		{ userId: input.userId, request: input.request },
 	);
 	const delivery = await db
 		.prepare(
@@ -63,7 +64,7 @@ export async function revealStoreDelivery(
 				"stock_secret",
 				input.deliveryId,
 				input.request?.headers.get("x-request-id") ?? null,
-				input.request?.headers.get("cf-connecting-ip") ?? null,
+				clientIp(input.request),
 				Date.now(),
 			)
 			.run();
@@ -87,7 +88,7 @@ export async function revealStoreDelivery(
 		eventType: "revealed",
 		actorType: "customer",
 		requestId: input.request?.headers.get("x-request-id") ?? undefined,
-		ipAddress: input.request?.headers.get("cf-connecting-ip") ?? undefined,
+		ipAddress: clientIp(input.request) ?? undefined,
 	});
 	await db
 		.prepare(
@@ -101,7 +102,7 @@ export async function revealStoreDelivery(
 			input.actorUserId ?? null,
 			input.deliveryId,
 			input.request?.headers.get("x-request-id") ?? null,
-			input.request?.headers.get("cf-connecting-ip") ?? null,
+			clientIp(input.request),
 			JSON.stringify({ orderId: order.id }),
 			Date.now(),
 		)

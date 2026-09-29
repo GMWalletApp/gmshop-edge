@@ -2,6 +2,7 @@ import { z } from "zod";
 import { consumeEntitlementAccess } from "#/features/entitlements/server/ledger";
 import { getStoreOrder } from "#/features/storefront/server/order-query";
 import { DomainError } from "#/lib/domain-error";
+import { clientIp } from "#/server/client-ip";
 
 const schema = z.object({
 	orderNumber: z.string().trim().min(8).max(80),
@@ -23,7 +24,7 @@ export async function storeAutomationArtifactResponse(
 			503,
 			"Download storage is unavailable",
 		);
-	const order = await getStoreOrder(db, input, access);
+	const order = await getStoreOrder(db, input, { ...access, request });
 	const artifact = await db
 		.prepare(
 			`SELECT ba.id, ba.object_key, ba.file_name, ba.content_type, ba.checksum_sha256,
@@ -76,7 +77,7 @@ export async function storeAutomationArtifactResponse(
 		eventType: "downloaded",
 		actorType: "customer",
 		requestId: request.headers.get("x-request-id") ?? undefined,
-		ipAddress: request.headers.get("cf-connecting-ip") ?? undefined,
+		ipAddress: clientIp(request) ?? undefined,
 		unavailableCode: "artifact_access_limit_reached",
 		unavailableMessage: "Artifact access limit reached",
 	});
@@ -97,7 +98,7 @@ export async function storeAutomationArtifactResponse(
 				crypto.randomUUID(),
 				artifact.id,
 				request.headers.get("x-request-id"),
-				request.headers.get("cf-connecting-ip"),
+				clientIp(request),
 				JSON.stringify({ orderId: order.id }),
 				now,
 			),

@@ -75,28 +75,69 @@ describe("Better Auth account security flow", () => {
 		});
 	});
 
-	it("keys authentication rate limits by Cloudflare's client address", async () => {
-		const rateLimitedAuth = createAuth(drizzle(database, { schema }), {
-			BETTER_AUTH_SECRET: runtime.betterAuthSecret,
-			BETTER_AUTH_URL: runtime.betterAuthUrl,
-		});
-		const attempt = (ipAddress: string) =>
-			rateLimitedAuth.handler(
-				new Request(`${runtime.betterAuthUrl}/api/auth/sign-in/email`, {
+	it("shares D1-backed authentication rate limits across isolates, keyed by the trusted client address", async () => {
+		// Two auth instances stand in for two Workers isolates (or Bun restarts)
+		// that only share the database.
+		const isolates = [0, 1].map(() =>
+			createAuth(drizzle(database, { schema }), {
+				BETTER_AUTH_SECRET: runtime.betterAuthSecret,
+				BETTER_AUTH_URL: runtime.betterAuthUrl,
+			}),
+		);
+		const attempt = (
+			isolate: number,
+			headers: Record<string, string>,
+			path = "/api/auth/sign-in/email",
+		) =>
+			(isolates[isolate] ?? isolates[0])?.handler(
+				new Request(`${runtime.betterAuthUrl}${path}`, {
 					method: "POST",
 					headers: {
-						"cf-connecting-ip": ipAddress,
+						...headers,
 						"content-type": "application/json",
 						origin: runtime.betterAuthUrl,
 					},
 					body: JSON.stringify({ email, password: "incorrect-password" }),
 				}),
-			);
+			) as Promise<Response>;
+		await awaitFreshRateLimitWindow();
 		for (let attemptIndex = 0; attemptIndex < 5; attemptIndex += 1) {
-			expect((await attempt("192.0.2.10")).status).not.toBe(429);
+			expect(
+				(
+					await attempt(attemptIndex % 2, {
+						"x-gmshop-client-ip": "192.0.2.10",
+					})
+				).status,
+			).toBe(401);
 		}
-		expect((await attempt("192.0.2.10")).status).toBe(429);
-		expect((await attempt("198.51.100.10")).status).not.toBe(429);
+		const limited = await attempt(1, { "x-gmshop-client-ip": "192.0.2.10" });
+		expect(limited.status).toBe(429);
+		expect(Number(limited.headers.get("X-Retry-After"))).toBeGreaterThan(0);
+		expect(
+			(await attempt(0, { "x-gmshop-client-ip": "192.0.2.10" })).status,
+		).toBe(429);
+		expect(
+			(await attempt(0, { "x-gmshop-client-ip": "198.51.100.10" })).status,
+		).toBe(401);
+		// Client-supplied proxy headers are not trusted for keying.
+		expect(
+			(
+				await attempt(1, {
+					"cf-connecting-ip": "192.0.2.77",
+					"x-forwarded-for": "192.0.2.78",
+					"x-gmshop-client-ip": "192.0.2.10",
+				})
+			).status,
+		).toBe(429);
+		const buckets = await database
+			.prepare(
+				"SELECT bucket_key, count FROM rate_limit_counters WHERE bucket_key LIKE 'better-auth:%' ORDER BY bucket_key",
+			)
+			.all<{ bucket_key: string; count: number }>();
+		expect(buckets.results).toEqual([
+			{ bucket_key: "better-auth:192.0.2.10|/sign-in/email", count: 5 },
+			{ bucket_key: "better-auth:198.51.100.10|/sign-in/email", count: 1 },
+		]);
 		const failures = await database
 			.prepare(
 				`SELECT COUNT(*) AS count, group_concat(after) AS payloads
@@ -133,7 +174,7 @@ describe("Better Auth account security flow", () => {
 			headers: {
 				cookie,
 				"x-request-id": "self-password-request",
-				"cf-connecting-ip": "203.0.113.80",
+				"x-gmshop-client-ip": "203.0.113.80",
 			},
 			body: {
 				currentPassword: password,
@@ -271,6 +312,7 @@ describe("Better Auth account security flow", () => {
 	});
 
 	it("rate-limits repeated failed sign-in requests from one client", async () => {
+		await awaitFreshRateLimitWindow();
 		const responses: Response[] = [];
 		for (let attempt = 0; attempt < 6; attempt++) {
 			responses.push(
@@ -292,6 +334,16 @@ describe("Better Auth account security flow", () => {
 		expect(responses[5]?.status).toBe(429);
 	});
 });
+
+/**
+ * D1 rate limits use aligned 60-second windows; a window boundary in the
+ * middle of a burst would split it, so wait it out when it is imminent.
+ */
+async function awaitFreshRateLimitWindow(windowMs = 60_000, marginMs = 3_000) {
+	const remaining = windowMs - (Date.now() % windowMs);
+	if (remaining < marginMs)
+		await new Promise((resolve) => setTimeout(resolve, remaining + 50));
+}
 
 function responseCookie(response: Response) {
 	const values = response.headers.getSetCookie();

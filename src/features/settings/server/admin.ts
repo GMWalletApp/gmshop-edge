@@ -17,6 +17,7 @@ import {
 import { siteAssetContentTypes } from "#/features/settings/site-assets";
 import { DomainError } from "#/lib/domain-error";
 import { rotateSecretKeyring } from "#/lib/secrets";
+import { clientIp } from "#/server/client-ip";
 import { getCloudflareEnv } from "#/server/db.server";
 
 export const listSystemSettingsFn = createServerFn({ method: "GET" }).handler(
@@ -42,7 +43,7 @@ export const updateSystemSettingsFn = createServerFn({ method: "POST" })
 			cache: context.env.CACHE,
 			userId: context.user.id,
 			requestId: context.request.headers.get("x-request-id"),
-			ipAddress: context.request.headers.get("cf-connecting-ip"),
+			ipAddress: clientIp(context.request),
 		});
 	});
 
@@ -80,7 +81,8 @@ export const rotateRuntimeSecretFn = createServerFn({ method: "POST" })
 				cache: context.env.CACHE,
 				userId: context.user.id,
 				requestId: context.request.headers.get("x-request-id"),
-				ipAddress: context.request.headers.get("cf-connecting-ip"),
+				ipAddress: clientIp(context.request),
+				allowKeyringReplacement: true,
 			},
 		);
 		return { key: data.key, rotated: true };
@@ -122,7 +124,7 @@ function siteAssetDependencies(
 		cache: context.env.CACHE,
 		userId: context.user.id,
 		requestId: context.request.headers.get("x-request-id"),
-		ipAddress: context.request.headers.get("cf-connecting-ip"),
+		ipAddress: clientIp(context.request),
 	};
 }
 

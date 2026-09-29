@@ -6,17 +6,21 @@ import {
 } from "#/features/settings/secrecy";
 
 describe("runtime setting secrecy", () => {
-	it("returns configured runtime secrets to the permission-protected settings page", () => {
-		const secret = "a-real-runtime-secret-visible-to-settings-admins";
+	it("never returns runtime secret values, only whether they are configured", () => {
+		const secret = "a-real-runtime-secret-that-must-stay-on-the-server";
 		expect(presentSettingValue("runtime.better_auth_secret", secret)).toEqual({
-			value: secret,
+			value: "",
 			configured: true,
 		});
 		expect(
 			presentSettingValue("runtime.data_encryption_secret", secret),
 		).toEqual({
-			value: secret,
+			value: "",
 			configured: true,
+		});
+		expect(presentSettingValue("runtime.data_encryption_secret", "")).toEqual({
+			value: "",
+			configured: false,
 		});
 	});
 

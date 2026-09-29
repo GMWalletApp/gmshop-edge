@@ -361,7 +361,7 @@ describe("build lifecycle", { timeout: 30_000 }, () => {
 				method: "POST",
 				headers: {
 					"x-request-id": "artifact-download",
-					"cf-connecting-ip": "192.0.2.20",
+					"x-gmshop-client-ip": "192.0.2.20",
 				},
 			}),
 			{
@@ -725,6 +725,44 @@ describe("build lifecycle", { timeout: 30_000 }, () => {
 				now,
 			),
 		).resolves.toMatchObject({ status: "succeeded" });
+	});
+
+	it("authorizes the order before consulting idempotency keys and scopes keys to the order", async () => {
+		const method = await database
+			.prepare(
+				"SELECT id FROM product_automation_methods WHERE sellable_item_id = ? LIMIT 1",
+			)
+			.bind(sellableItemId)
+			.first<{ id: string }>();
+		if (!method) throw new Error("Build method fixture is required");
+		const input = {
+			orderNumber: "GM200001",
+			entitlementId,
+			methodId: method.id,
+			idempotencyKey: "build-scoped-idempotency",
+			authorizationValues: {},
+			automationValues: {},
+		};
+		const intruder = { userId: "another-customer" };
+		await expect(
+			createBuildJob(database, input, intruder),
+		).rejects.toMatchObject({ code: "order_not_found", status: 404 });
+		const created = await createBuildJob(database, input, customerAccess);
+		expect(created).toMatchObject({ status: "queued", duplicate: false });
+		// A stranger presenting the same key learns nothing about the job.
+		await expect(
+			createBuildJob(database, input, intruder),
+		).rejects.toMatchObject({ code: "order_not_found", status: 404 });
+		await expect(
+			createBuildJob(database, input, customerAccess),
+		).resolves.toMatchObject({ id: created.id, duplicate: true });
+		const stored = await database
+			.prepare("SELECT idempotency_key FROM automation_jobs WHERE id = ?")
+			.bind(created.id)
+			.first<{ idempotency_key: string }>();
+		expect(stored).toEqual({
+			idempotency_key: "order-build:build-scoped-idempotency",
+		});
 	});
 });
 

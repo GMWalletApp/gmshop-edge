@@ -3,6 +3,7 @@ import { consumeEntitlementAccess } from "#/features/entitlements/server/ledger"
 import { storeOrderLookupSchema } from "#/features/storefront/schema";
 import { getStoreOrder } from "#/features/storefront/server/order-query";
 import { DomainError } from "#/lib/domain-error";
+import { clientIp } from "#/server/client-ip";
 
 const downloadSchema = z.object({
 	orderNumber: z.string().trim().min(8).max(80),
@@ -32,7 +33,7 @@ export async function storeDownloadResponse(
 			503,
 			"Download storage is unavailable",
 		);
-	const order = await getStoreOrder(db, input, access);
+	const order = await getStoreOrder(db, input, { ...access, request });
 	const grant = await db
 		.prepare(
 			`SELECT ce.id AS entitlement_id,
@@ -70,7 +71,7 @@ export async function storeDownloadResponse(
 		eventType: "downloaded",
 		actorType: "customer",
 		requestId: request.headers.get("x-request-id") ?? undefined,
-		ipAddress: request.headers.get("cf-connecting-ip") ?? undefined,
+		ipAddress: clientIp(request) ?? undefined,
 		unavailableCode: "download_limit_reached",
 		unavailableMessage: "Download limit reached",
 	});
@@ -85,7 +86,7 @@ export async function storeDownloadResponse(
 			crypto.randomUUID(),
 			input.assetId,
 			request.headers.get("x-request-id"),
-			request.headers.get("cf-connecting-ip"),
+			clientIp(request),
 			JSON.stringify({
 				orderId: order.id,
 				entitlementId: grant.entitlement_id,

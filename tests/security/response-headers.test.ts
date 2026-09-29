@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { AccessDeniedError } from "#/features/access/server/access-cache";
 import { adminAccessErrorResponse } from "#/server/access-error-response";
 import { apiError, json, requestId, withRequestId } from "#/server/http";
-import { applySecurityHeaders } from "#/server/http-security";
+import {
+	applySecurityHeaders,
+	CSP_NONCE_HEADER,
+	createCspNonce,
+	cspNonce,
+} from "#/server/http-security";
 import { withForwardedProtocol } from "#/server/runtime/forwarded-protocol";
 
 describe("application security headers", () => {
@@ -52,6 +57,9 @@ describe("application security headers", () => {
 		expect(response.headers.get("content-security-policy")).not.toContain(
 			"script-src 'self' 'unsafe-inline' http:",
 		);
+		expect(response.headers.get("content-security-policy")).not.toContain(
+			"'nonce-",
+		);
 		expect(response.headers.get("content-security-policy")).toContain(
 			"frame-src 'self' https:",
 		);
@@ -65,6 +73,43 @@ describe("application security headers", () => {
 		expect(response.headers.get("strict-transport-security")).toContain(
 			"max-age=31536000",
 		);
+	});
+
+	it("enforces a nonce-based script policy for production renders", () => {
+		const nonce = createCspNonce();
+		const request = new Request("https://pay.example/", {
+			headers: { [CSP_NONCE_HEADER]: nonce },
+		});
+		expect(cspNonce(request)).toBe(nonce);
+		const policy = applySecurityHeaders(request, new Response("ok"), {
+			nonce,
+		}).headers.get("content-security-policy");
+		expect(policy).toContain(
+			`script-src 'nonce-${nonce}' 'strict-dynamic' 'self' 'unsafe-inline' https:`,
+		);
+		expect(policy).toContain("object-src 'none'");
+		expect(
+			cspNonce(
+				new Request("https://pay.example/", {
+					headers: { [CSP_NONCE_HEADER]: "<script>" },
+				}),
+			),
+		).toBeNull();
+	});
+
+	it("derives HTTPS from the configured public origin when the proxy sends no header", () => {
+		const canonical = withForwardedProtocol(
+			new Request("http://shop.example/install"),
+			{ trustProxyHeaders: false, canonicalOrigin: "https://shop.example" },
+		);
+		expect(canonical.url).toBe("https://shop.example/install");
+		const untrusted = withForwardedProtocol(
+			new Request("http://shop.example/install", {
+				headers: { "x-forwarded-proto": "https" },
+			}),
+			{ trustProxyHeaders: false, canonicalOrigin: "http://localhost:3000" },
+		);
+		expect(untrusted.url).toBe("http://shop.example/install");
 	});
 
 	it("does not send HSTS over local HTTP", () => {

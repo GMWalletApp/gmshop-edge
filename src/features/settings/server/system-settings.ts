@@ -7,6 +7,7 @@ import {
 import { invalidateSiteBrandCache } from "#/features/settings/server/site-brand";
 import { DomainError } from "#/lib/domain-error";
 import { supportedLocales } from "#/lib/locales";
+import { clientIpSources } from "#/server/client-ip";
 
 export type SettingValue = string | number | boolean | string[];
 
@@ -39,8 +40,10 @@ const definitions = {
 	"queue.retry_base_ms": z.number().int().min(1_000).max(3_600_000),
 	"security.allowed_hosts": z
 		.array(hostSchema)
+		.min(1)
 		.max(100)
 		.transform((hosts) => [...new Set(hosts)]),
+	"security.client_ip_source": z.enum(clientIpSources),
 	"auth.registration_enabled": z.boolean(),
 	"auth.require_email_verification": z.boolean(),
 	"auth.session_max_age_seconds": z.number().int().min(3_600).max(31_536_000),
@@ -80,6 +83,7 @@ const defaults: Record<SettingKey, SettingValue> = {
 	"queue.publish_batch_size": 25,
 	"queue.retry_base_ms": 15_000,
 	"security.allowed_hosts": [],
+	"security.client_ip_source": "auto",
 	"auth.registration_enabled": true,
 	"auth.require_email_verification": false,
 	"auth.session_max_age_seconds": 2_592_000,
@@ -119,6 +123,8 @@ export async function saveSystemSettings(
 		userId: string;
 		requestId?: string | null;
 		ipAddress?: string | null;
+		/** Only the keyring rotation path may replace an initialized keyring. */
+		allowKeyringReplacement?: boolean;
 	},
 ) {
 	if (new Set(items.map((item) => item.key)).size !== items.length)
@@ -128,9 +134,13 @@ export async function saveSystemSettings(
 			throw new DomainError("invalid_settings", 400, "Unknown setting key");
 		const key = item.key as SettingKey;
 		if (shouldPreserveRuntimeSecret(key, item.value)) return [];
-		return [{ key, value: definitions[key].parse(item.value) as SettingValue }];
+		const result = definitions[key].safeParse(item.value);
+		if (!result.success) throw settingInvalid(key);
+		return [{ key, value: result.data as SettingValue }];
 	});
 	await assertCommerceMoneySettingsMutable(parsed, dependencies.db);
+	if (!dependencies.allowKeyringReplacement)
+		await assertKeyringNotReplaced(parsed, dependencies.db);
 	const now = Date.now();
 	await dependencies.db.batch([
 		...parsed.map((item) =>
@@ -208,6 +218,51 @@ async function assertCommerceMoneySettingsMutable(
 			"commerce_currency_locked",
 			409,
 			"Currency settings cannot change while balances, pending top-ups, or exported listings exist",
+		);
+}
+
+// Fields whose rejection needs a specific explanation in the admin UI.
+const settingErrorCodes: Partial<Record<SettingKey, string>> = {
+	"security.allowed_hosts": "settings_allowed_hosts_required",
+	"security.client_ip_source": "settings_client_ip_source_invalid",
+};
+
+function settingInvalid(key: SettingKey) {
+	return new DomainError(
+		settingErrorCodes[key] ?? "invalid_settings",
+		400,
+		`Invalid value for ${key}`,
+	);
+}
+
+/**
+ * The data-encryption keyring protects every stored credential. Overwriting it
+ * with a free-form value would make all existing ciphertext undecryptable, so
+ * an initialized keyring can only change through the rotation action.
+ */
+async function assertKeyringNotReplaced(
+	parsed: Array<{ key: SettingKey; value: SettingValue }>,
+	db: D1Database,
+) {
+	if (!parsed.some((item) => item.key === "runtime.data_encryption_secret"))
+		return;
+	const current = await db
+		.prepare(
+			"SELECT value FROM system_settings WHERE key = 'runtime.data_encryption_secret' LIMIT 1",
+		)
+		.first<{ value: string }>();
+	if (!current) return;
+	let stored: unknown;
+	try {
+		stored = JSON.parse(current.value);
+	} catch {
+		return;
+	}
+	if (typeof stored === "string" && stored.length > 0)
+		throw new DomainError(
+			"settings_keyring_rotate_only",
+			409,
+			"The data encryption keyring can only be rotated, not replaced",
 		);
 }
 

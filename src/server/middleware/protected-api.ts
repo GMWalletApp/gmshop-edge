@@ -15,7 +15,7 @@ export const protectedApiMiddleware = createMiddleware({
 
 	try {
 		await requireAdmin(request);
-		return next();
+		return await next();
 	} catch (error) {
 		return adminAccessErrorResponse(request, error);
 	}

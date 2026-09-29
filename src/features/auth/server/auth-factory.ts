@@ -1,4 +1,7 @@
-import type { GenericEndpointContext } from "@better-auth/core";
+import type {
+	BetterAuthRateLimitStorage,
+	GenericEndpointContext,
+} from "@better-auth/core";
 import {
 	APIError,
 	type BetterAuthOptions,
@@ -30,7 +33,9 @@ import {
 import { enqueueConfiguredEmailNotification } from "#/features/notifications/server/delivery";
 import { DomainError } from "#/lib/domain-error";
 import { m } from "#/paraglide/messages";
+import { CLIENT_IP_HEADER, clientIpFromHeaders } from "#/server/client-ip";
 import type { AppDb } from "#/server/db.server";
+import { claimFixedWindowRateLimit } from "#/server/rate-limit";
 
 export type AuthEnv = {
 	BETTER_AUTH_SECRET: string;
@@ -67,9 +72,11 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 		trustedOrigins,
 		advanced: {
 			ipAddress: {
-				// Cloudflare Workers receive the authenticated client address in this
-				// single-value header. Better Auth otherwise only checks X-Forwarded-For.
-				ipAddressHeaders: ["cf-connecting-ip"],
+				// Both server entries strip any client-supplied value and set this
+				// single-value header from the trusted client address (Workers:
+				// cf-connecting-ip; Bun: the reverse proxy). Better Auth otherwise
+				// only checks X-Forwarded-For, which clients can spoof.
+				ipAddressHeaders: [CLIENT_IP_HEADER],
 			},
 		},
 		account: {
@@ -216,7 +223,15 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 			enabled: true,
 			window: 60,
 			max: 20,
+			// Better Auth's default store is per-isolate memory, which every
+			// Workers isolate (and every Bun restart) resets. Budgets live in D1.
+			customStorage: createAuthRateLimitStorage(db.$client),
 			customRules: {
+				// Read-only endpoints polled by every storefront page must not cost a
+				// D1 write per call nor share a budget with credential submissions.
+				"/get-session": false,
+				"/ok": false,
+				"/list-sessions": false,
 				"/sign-in/email": { window: 60, max: 5 },
 				"/sign-in/email-otp": { window: 60, max: 5 },
 				"/sign-up/email": { window: 60, max: 5 },
@@ -245,6 +260,18 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 							code: "INVALID_EMAIL_OR_PASSWORD",
 							message: "Invalid email or password",
 						});
+				}
+				// Internal identity addresses (<telegramId>@telegram.invalid) are
+				// reserved for Telegram-created users; a squatter must not register
+				// or move onto one and inherit that identity's account.
+				if (ctx.path === "/sign-up/email" || ctx.path === "/change-email") {
+					const body = ctx.body as
+						| { email?: unknown; newEmail?: unknown }
+						| undefined;
+					const email =
+						ctx.path === "/sign-up/email" ? body?.email : body?.newEmail;
+					if (typeof email === "string" && isInternalIdentityEmail(email))
+						throw invalidEmailError();
 				}
 				if (ctx.path === "/telegram/miniapp/signin") {
 					assertTrustedTelegramOrigin(ctx, trustedOrigins);
@@ -330,7 +357,7 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 							action,
 							userId,
 							ctx.headers?.get("x-request-id") ?? null,
-							ctx.headers?.get("cf-connecting-ip") ?? null,
+							clientIpFromHeaders(ctx.headers),
 							after ? JSON.stringify(after) : null,
 							Date.now(),
 						),
@@ -432,6 +459,70 @@ export function createAuth(db: AppDb, env: AuthEnv) {
 			tanstackStartCookies(),
 		],
 	});
+}
+
+/**
+ * D1-authoritative Better Auth rate-limit storage. Better Auth 1.6 calls
+ * `consume` for the whole check-and-increment when it is present and only
+ * falls back to the non-atomic `get`/`set` pair for storages without it, so
+ * those two stay inert and the fixed-window counter is the single source of
+ * truth shared by every isolate.
+ */
+export function createAuthRateLimitStorage(
+	database: D1Database,
+	now: () => number = Date.now,
+): BetterAuthRateLimitStorage {
+	return {
+		get: async () => null,
+		set: async () => {},
+		consume: async (key, rule) => {
+			const windowMs = rule.window * 1_000;
+			const claimedAt = now();
+			const budget = await claimFixedWindowRateLimit(database, {
+				bucketKey: `better-auth:${key}`,
+				limit: rule.max,
+				windowMs,
+				now: claimedAt,
+			});
+			return {
+				allowed: budget.allowed,
+				retryAfter: budget.allowed
+					? null
+					: Math.max(
+							1,
+							Math.ceil((budget.windowStart + windowMs - claimedAt) / 1_000),
+						),
+			};
+		},
+	};
+}
+
+function invalidEmailError() {
+	return APIError.from("BAD_REQUEST", {
+		code: "INVALID_EMAIL",
+		message: "Invalid email address",
+	});
+}
+
+/**
+ * Only Telegram sign-in flows may create users on the reserved
+ * `<telegramId>@telegram.invalid` identity domain. Better Auth passes the
+ * endpoint context to database hooks; routed requests carry the concrete
+ * path while direct `auth.api` calls carry the declared pattern.
+ */
+function createsTelegramIdentity(
+	ctx: { path?: string; params?: Record<string, unknown> } | null | undefined,
+) {
+	if (!ctx?.path) return true;
+	if (
+		ctx.path === "/telegram/signin" ||
+		ctx.path === "/telegram/miniapp/signin"
+	)
+		return true;
+	return (
+		ctx.path === "/callback/telegram" ||
+		(ctx.path === "/callback/:id" && ctx.params?.id === "telegram")
+	);
 }
 
 function assertTrustedTelegramOrigin(
@@ -810,7 +901,7 @@ async function auditAuthenticationFailure(
 			crypto.randomUUID(),
 			action,
 			headers?.get("x-request-id") ?? null,
-			headers?.get("cf-connecting-ip") ?? null,
+			clientIpFromHeaders(headers),
 			JSON.stringify({ path }),
 			Date.now(),
 		)
@@ -895,7 +986,19 @@ function enabledUsersPlugin() {
 					databaseHooks: {
 						user: {
 							create: {
-								async before(newUser: Record<string, unknown>) {
+								async before(
+									newUser: Record<string, unknown>,
+									ctx?: {
+										path?: string;
+										params?: Record<string, unknown>;
+									} | null,
+								) {
+									if (
+										typeof newUser.email === "string" &&
+										isInternalIdentityEmail(newUser.email) &&
+										!createsTelegramIdentity(ctx)
+									)
+										throw invalidEmailError();
 									return {
 										data: {
 											enabled: true,

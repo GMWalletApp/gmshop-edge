@@ -177,18 +177,35 @@ export async function uploadAutomationArtifact(
 		delete(key: string): Promise<unknown>;
 	},
 	rawInput: unknown,
-	body: ArrayBuffer,
+	bodySource: ArrayBuffer | (() => Promise<ArrayBuffer>),
 	signatureHeader: string,
 	now = Date.now(),
 ) {
 	const input = artifactSchema.parse(rawInput);
+	// Everything that can be checked without the body happens first, so an
+	// anonymous caller cannot make the server buffer 100 MiB for a job that is
+	// unknown, finished, artifact-free or carries an unparsable signature.
+	const job = await loadCallbackJob(db, input.jobId);
+	if (!parseTimestampedSignature(signatureHeader))
+		throw new DomainError(
+			"automation_signature_invalid",
+			401,
+			"Build signature is invalid",
+		);
+	const existingBeforeUpload = await loadArtifactUpload(
+		db,
+		job.id,
+		input.artifactId,
+	);
+	if (!existingBeforeUpload) assertJobAcceptsArtifact(job, input.fileName);
+	const body =
+		typeof bodySource === "function" ? await bodySource() : bodySource;
 	if (body.byteLength < 1 || body.byteLength > 100 * 1024 * 1024)
 		throw new DomainError(
 			"automation_artifact_size_invalid",
 			400,
 			"Artifact must be between 1 byte and 100 MiB",
 		);
-	const job = await loadCallbackJob(db, input.jobId);
 	const checksumSha256 = await digestHex(body);
 	const secret = await callbackSecret(db, job);
 	await verifySignature(
@@ -213,24 +230,6 @@ export async function uploadAutomationArtifact(
 			"Artifact ID is already in use or upload is still in progress",
 		);
 	}
-	if (job.status !== "running")
-		throw new DomainError(
-			"automation_artifact_not_accepted",
-			409,
-			"Build is not accepting artifacts",
-		);
-	if (job.artifact_policy === "none")
-		throw new DomainError(
-			"automation_artifact_not_accepted",
-			409,
-			"This automation method does not accept artifacts",
-		);
-	if (!matchesOutputPattern(input.fileName, job.output_pattern))
-		throw new DomainError(
-			"automation_artifact_name_invalid",
-			400,
-			"Artifact does not match the configured output pattern",
-		);
 	const objectKey = `automation/${job.id}/${input.artifactId}`;
 	const retentionMs = await loadArtifactRetentionMs(db);
 	const reserved = await db
@@ -375,6 +374,27 @@ async function loadCallbackJob(db: D1Database, jobId: string) {
 			"Automation job not found",
 		);
 	return job;
+}
+
+function assertJobAcceptsArtifact(job: CallbackJob, fileName: string) {
+	if (job.status !== "running")
+		throw new DomainError(
+			"automation_artifact_not_accepted",
+			409,
+			"Build is not accepting artifacts",
+		);
+	if (job.artifact_policy === "none")
+		throw new DomainError(
+			"automation_artifact_not_accepted",
+			409,
+			"This automation method does not accept artifacts",
+		);
+	if (!matchesOutputPattern(fileName, job.output_pattern))
+		throw new DomainError(
+			"automation_artifact_name_invalid",
+			400,
+			"Artifact does not match the configured output pattern",
+		);
 }
 
 function assertProviderJobOwnership(

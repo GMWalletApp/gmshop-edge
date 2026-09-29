@@ -12,6 +12,12 @@ export function settingsErrorMessage(error: unknown) {
 			return m.settings_error_asset_invalid();
 		case "site_logo_not_square":
 			return m.settings_site_logo_square();
+		case "settings_keyring_rotate_only":
+			return m.settings_error_keyring_rotate_only();
+		case "settings_allowed_hosts_required":
+			return m.settings_error_allowed_hosts_required();
+		case "settings_client_ip_source_invalid":
+			return m.settings_error_client_ip_source_invalid();
 		default:
 			return m.settings_save_failed();
 	}

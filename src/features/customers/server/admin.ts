@@ -23,6 +23,8 @@ import {
 import { mutateWallet } from "#/features/wallet/server/ledger";
 import { DomainError } from "#/lib/domain-error";
 import { createAuditStatement } from "#/server/audit";
+import { redactAuditValue } from "#/server/audit-redaction";
+import { clientIp } from "#/server/client-ip";
 import {
 	getAdminServerContext,
 	getAdminServerContextAny,
@@ -139,10 +141,15 @@ export const updateCustomerFn = createServerFn({ method: "POST" })
 		customerUpdateSchema.parse(input),
 	)
 	.handler(async ({ data }) => {
-		const { currentUser, db, request } = await getAdminServerContext(
+		const { currentUser, db, request } = await getAdminServerContextAny([
 			systemPermission("customers", "update"),
-		);
-		return updateCustomerRecord(db.$client, request, currentUser.id, data);
+		]);
+		return updateCustomerRecord(db.$client, request, currentUser.id, data, {
+			canManagePrivilegedUsers: hasSystemPermission(
+				currentUser.permissions,
+				systemPermission("users", "update"),
+			),
+		});
 	});
 
 export const adjustCustomerWalletFn = createServerFn({ method: "POST" })
@@ -169,18 +176,59 @@ export const adjustCustomerWalletFn = createServerFn({ method: "POST" })
 			reason: data.reason,
 			actorUserId: currentUser.id,
 		});
-		await createAuditStatement(db.$client, request, currentUser.id, {
-			action: "customer.wallet_adjusted",
-			targetType: "user",
-			targetId: data.id,
-			after: {
-				direction: data.direction,
-				amountMinor: data.amountMinor,
-				reason: data.reason,
-			},
-		}).run();
+		await recordCustomerWalletAdjustmentAudit(
+			db.$client,
+			request,
+			currentUser.id,
+			data,
+			result,
+		);
 		return result;
 	});
+
+/**
+ * The ledger mutation commits on its own, so the audit row is keyed by the
+ * ledger entry: a replay of the same idempotency key repairs an audit that a
+ * crash skipped without ever recording the adjustment twice.
+ */
+export async function recordCustomerWalletAdjustmentAudit(
+	db: D1Database,
+	request: Request,
+	actorUserId: string,
+	data: Pick<
+		z.infer<typeof customerWalletAdjustmentSchema>,
+		"id" | "direction" | "amountMinor" | "reason"
+	>,
+	result: { id: string; balanceMinor: string },
+) {
+	await db
+		.prepare(
+			`INSERT OR IGNORE INTO audit_logs
+			 (id, actor_user_id, action, target_type, target_id, request_id,
+			  ip_address, after, created_at)
+			 SELECT ?, ?, 'customer.wallet_adjusted', 'user', ?, ?, ?, ?, ?
+			 FROM wallet_entries WHERE id = ?`,
+		)
+		.bind(
+			`wallet-adjustment:${result.id}`,
+			actorUserId,
+			data.id,
+			request.headers.get("x-request-id"),
+			clientIp(request),
+			JSON.stringify(
+				redactAuditValue({
+					direction: data.direction,
+					amountMinor: data.amountMinor,
+					reason: data.reason,
+					walletEntryId: result.id,
+					balanceMinor: result.balanceMinor,
+				}),
+			),
+			Date.now(),
+			result.id,
+		)
+		.run();
+}
 
 export const exportCustomerDataFn = createServerFn({ method: "POST" })
 	.validator((input: z.input<typeof customerSensitiveActionSchema>) =>

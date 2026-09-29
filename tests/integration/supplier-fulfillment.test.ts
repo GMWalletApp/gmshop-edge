@@ -503,6 +503,14 @@ describe("supplier fulfillment", { timeout: 30_000 }, () => {
 			ok: false,
 			message: "authentication_failed",
 		});
+		// Only the two authenticated callbacks consumed the account budget.
+		await expect(
+			db
+				.prepare(
+					"SELECT count FROM rate_limit_counters WHERE bucket_key = 'supplier:callback:account'",
+				)
+				.first<{ count: number }>(),
+		).resolves.toEqual({ count: 2 });
 		const latePayload = { ...payload, event: "order.fulfilled.late" };
 		const lateRawBody = JSON.stringify(latePayload);
 		const lateSignature = signDujiaoNextRequest({

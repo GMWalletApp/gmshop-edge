@@ -292,7 +292,10 @@ if (tool === "vite" && process.env.WORKERS_CI === "1") {
 			new URL("../../src/server-entry.ts", import.meta.url),
 			"utf8",
 		);
-		expect(source).toContain("createStartHandler(defaultStreamHandler)");
+		// The stream handler is wrapped only to stamp the CSP nonce; rendering
+		// still goes through TanStack's streaming handler.
+		expect(source).toContain("createStartHandler(streamHandler)");
+		expect(source).toContain("return defaultStreamHandler(context);");
 		expect(source).not.toContain("renderToString");
 	});
 });

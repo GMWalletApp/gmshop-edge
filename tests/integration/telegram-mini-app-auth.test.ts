@@ -128,7 +128,7 @@ describe("Telegram Mini App Better Auth login", { timeout: 30_000 }, () => {
 				headers: {
 					"content-type": "application/json",
 					origin: "https://shop.example",
-					"cf-connecting-ip": "203.0.113.10",
+					"x-gmshop-client-ip": "203.0.113.10",
 				},
 				body: JSON.stringify({ initData: data }),
 			});
@@ -303,7 +303,7 @@ async function signInMiniApp(
 			headers: {
 				"content-type": "application/json",
 				origin: "https://shop.example",
-				"cf-connecting-ip": "203.0.113.11",
+				"x-gmshop-client-ip": "203.0.113.11",
 			},
 			body: JSON.stringify({ initData }),
 		}),

@@ -31,6 +31,7 @@ import { PageHeader } from "#/layouts/components/page-header";
 import { fiatCurrencyOptions } from "#/lib/fiat-currencies";
 import { m } from "#/paraglide/messages";
 import { getLocale } from "#/paraglide/runtime";
+import { clientIpSources } from "#/server/client-ip";
 
 export type SettingsGroup =
 	| "orders"
@@ -45,9 +46,10 @@ type Field = {
 	key: SettingKey;
 	label: string;
 	description: string;
-	type: "text" | "password" | "number" | "origins" | "switch";
+	type: "text" | "password" | "number" | "origins" | "switch" | "select";
 	min?: number;
 	max?: number;
+	options?: readonly string[];
 };
 
 function settingsFields(): Record<SettingsGroup, Field[]> {
@@ -94,6 +96,13 @@ function settingsFields(): Record<SettingsGroup, Field[]> {
 				label: m.settings_allowed_hosts(),
 				description: m.settings_allowed_hosts_description(),
 				type: "origins",
+			},
+			{
+				key: "security.client_ip_source",
+				label: m.settings_client_ip_source(),
+				description: m.settings_client_ip_source_description(),
+				type: "select",
+				options: clientIpSources,
 			},
 		],
 		commerce: [
@@ -377,7 +386,9 @@ function settingsSchema(
 					? ("password" as const)
 					: field.type === "origins"
 						? ("textarea" as const)
-						: ("text" as const),
+						: field.type === "select"
+							? ("select" as const)
+							: ("text" as const),
 		required: field.type !== "password",
 		...(field.type === "switch"
 			? {
@@ -396,16 +407,23 @@ function settingsSchema(
 		fieldProps:
 			field.type === "password" && configuredSecrets.get(field.key)
 				? { placeholder: m.settings_secret_configured() }
-				: field.type === "origins"
-					? { rows: 6 }
-					: field.type === "number"
-						? {
-								inputMode: "numeric",
-								suffix: durationUnit(field.key),
-								...(field.min == null ? {} : { min: field.min }),
-								...(field.max == null ? {} : { max: field.max }),
-							}
-						: undefined,
+				: field.type === "select"
+					? {
+							options: (field.options ?? []).map((value) => ({
+								label: value,
+								value,
+							})),
+						}
+					: field.type === "origins"
+						? { rows: 6 }
+						: field.type === "number"
+							? {
+									inputMode: "numeric",
+									suffix: durationUnit(field.key),
+									...(field.min == null ? {} : { min: field.min }),
+									...(field.max == null ? {} : { max: field.max }),
+								}
+							: undefined,
 	}));
 }
 

@@ -17,6 +17,7 @@ import {
 } from "#/features/operations/server/run-task";
 import { DomainError } from "#/lib/domain-error";
 import { redactedAuditJson } from "#/server/audit-redaction";
+import { clientIp } from "#/server/client-ip";
 import { getCloudflareEnv } from "#/server/db.server";
 import { loadOperationalSettings } from "#/server/operational-settings";
 
@@ -196,7 +197,7 @@ export const runOperationsTaskFn = createServerFn({ method: "POST" })
 			task: data.task,
 			actorUserId: user.id,
 			requestId: request.headers.get("x-request-id"),
-			ipAddress: request.headers.get("cf-connecting-ip"),
+			ipAddress: clientIp(request),
 		});
 	});
 
@@ -287,7 +288,7 @@ export const retryQueueFn = createServerFn({ method: "POST" })
 		return retryQueueWorkload(env as Env, {
 			actorUserId: user.id,
 			requestId: request.headers.get("x-request-id"),
-			ipAddress: request.headers.get("cf-connecting-ip"),
+			ipAddress: clientIp(request),
 		});
 	});
 

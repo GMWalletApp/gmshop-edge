@@ -1,4 +1,5 @@
 import { DomainError } from "#/lib/domain-error";
+import { clientIp } from "#/server/client-ip";
 
 type BuildActionContext = {
 	orderId?: string;
@@ -296,7 +297,7 @@ function actionAuditStatement(
 			context.actorUserId,
 			action,
 			context.request?.headers.get("x-request-id") ?? null,
-			context.request?.headers.get("cf-connecting-ip") ?? null,
+			clientIp(context.request),
 			now,
 			jobId,
 			status,

@@ -17,8 +17,10 @@ import {
 } from "#/features/storefront/schema";
 import { publishPendingSupplierOrders } from "#/features/suppliers/server/outbox";
 import { DomainError } from "#/lib/domain-error";
+import { clientIp } from "#/server/client-ip";
 import { configurationLogoUrl } from "#/server/configuration-logo";
 import { getCloudflareEnv, getDb } from "#/server/db.server";
+import { claimFixedWindowRateLimit } from "#/server/rate-limit";
 import { resolveStoreAccount } from "./account";
 import { removeUserCartItems } from "./cart";
 import { createStoreOrder } from "./order";
@@ -45,11 +47,31 @@ export const createStoreOrderFn = createServerFn({ method: "POST" })
 					locale: account.user.preferredLocale,
 				}
 			: data;
+		if (!account && data.couponCode)
+			await enforceGuestCouponRateLimit(db, request);
 		return createStoreOrder(db, input, {
 			userId: account?.user.id,
 			identityEmail: account?.user.email,
 		});
 	});
+
+// Coupon codes are matched exactly; guests are throttled per client so codes
+// cannot be enumerated through repeated order creation.
+async function enforceGuestCouponRateLimit(db: D1Database, request: Request) {
+	const ip = clientIp(request);
+	if (!ip) return;
+	const claim = await claimFixedWindowRateLimit(db, {
+		bucketKey: `coupon-attempt:ip:${ip}`,
+		limit: 20,
+		windowMs: 60_000,
+	});
+	if (!claim.allowed)
+		throw new DomainError(
+			"coupon_attempts_rate_limited",
+			429,
+			"Too many coupon attempts; try again later",
+		);
+}
 
 export const trackCommerceEventFn = createServerFn({ method: "POST" })
 	.validator((input: z.input<typeof commerceEventSchema>) =>
@@ -127,6 +149,8 @@ export const checkoutStoreOrderFn = createServerFn({ method: "POST" })
 						: account.user.email,
 				}
 			: data;
+		if (!account && data.couponCode)
+			await enforceGuestCouponRateLimit(db, request);
 		const order = await createStoreOrder(db, input, {
 			userId: account?.user.id,
 			identityEmail: account?.user.email,
@@ -188,7 +212,7 @@ export const checkoutStoreOrderFn = createServerFn({ method: "POST" })
 				idempotencyKey: `checkout:${order.id}:${data.paymentChannelId}:${data.paymentCurrency ?? order.currency}`,
 				successUrl: `${origin}${orderPath}`,
 				cancelUrl: `${origin}${orderPath}`,
-				payerIp: request.headers.get("cf-connecting-ip"),
+				payerIp: clientIp(request),
 				payerMobile: isMobilePaymentRequest(request),
 			});
 			return { order, payment, accountOrder: Boolean(account) };
@@ -221,7 +245,8 @@ export const getStoreOrderFn = createServerFn({ method: "POST" })
 	)
 	.handler(async ({ data }) => {
 		requireStorefrontPermission("guest", "order.lookup");
-		return getStoreOrder(getDb().$client, data);
+		const request = getRequest();
+		return getStoreOrder(getDb(request).$client, data, { request });
 	});
 
 const retryStorePaymentSchema = storeOrderLookupSchema.extend({
@@ -242,6 +267,7 @@ export const retryStorePaymentFn = createServerFn({ method: "POST" })
 		);
 		const order = await getStoreOrder(db, data, {
 			userId: account?.user.id,
+			request,
 		});
 		if (order.status !== "pending_payment" || order.expiresAt <= Date.now())
 			throw new DomainError("order_not_payable", 409, "Order cannot be paid");
@@ -275,7 +301,7 @@ export const retryStorePaymentFn = createServerFn({ method: "POST" })
 			idempotencyKey: `checkout-retry:${order.id}:${crypto.randomUUID()}`,
 			successUrl: `${origin}${orderPath}`,
 			cancelUrl: `${origin}${orderPath}`,
-			payerIp: request.headers.get("cf-connecting-ip"),
+			payerIp: clientIp(request),
 			payerMobile: isMobilePaymentRequest(request),
 		});
 	});

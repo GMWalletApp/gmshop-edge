@@ -32,11 +32,20 @@ const variables = [
 
 const allowedVariables = new Set<string>(variables);
 const variablePattern = /{{\s*([a-z_]+)\s*}}/g;
+// C0/C1 controls (CR, LF, NUL, ESC…) plus Unicode line separators: any of
+// them inside a substituted value could inject or fold e-mail headers.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the control range is the point of this pattern.
+const controlCharacterPattern = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 
 export type NotificationTemplateValues = Record<
 	(typeof variables)[number],
 	string
 >;
+
+/** Collapses control characters in a substituted value to single spaces. */
+export function sanitizeNotificationValue(value: string) {
+	return value.replace(controlCharacterPattern, " ");
+}
 
 export function renderNotificationTemplate(
 	template: string,
@@ -44,7 +53,9 @@ export function renderNotificationTemplate(
 ) {
 	return template.replace(variablePattern, (_, key: string) => {
 		if (!allowedVariables.has(key)) return "";
-		return values[key as keyof NotificationTemplateValues];
+		return sanitizeNotificationValue(
+			values[key as keyof NotificationTemplateValues] ?? "",
+		);
 	});
 }
 

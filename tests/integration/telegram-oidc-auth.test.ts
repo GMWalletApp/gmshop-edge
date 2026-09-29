@@ -345,7 +345,7 @@ async function startOidc(
 				headers: {
 					"content-type": "application/json",
 					origin: "https://shop.example",
-					"cf-connecting-ip": `203.0.113.${requestAddress++}`,
+					"x-gmshop-client-ip": `203.0.113.${requestAddress++}`,
 					...(options.cookie ? { cookie: options.cookie } : {}),
 				},
 				body: JSON.stringify({

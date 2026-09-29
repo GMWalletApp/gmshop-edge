@@ -1,4 +1,6 @@
+import { requireMutableNonRootUser } from "#/features/users/server/root-protection";
 import { DomainError } from "#/lib/domain-error";
+import { privilegedCustomerError, userHoldsPrivilegedRole } from "./update";
 
 export async function prepareCustomerDataDeletion(
 	db: D1Database,
@@ -12,6 +14,16 @@ export async function prepareCustomerDataDeletion(
 		)
 		.bind(identityId)
 		.first<IdentityRow>();
+	if (registered) {
+		// Root and staff accounts are never anonymized through customer
+		// management; their orders and profile stay attached to the account.
+		await requireMutableNonRootUser(db, registered.id, {
+			notFoundCode: "customer_not_found",
+			notFoundMessage: "Customer not found",
+		});
+		if (await userHoldsPrivilegedRole(db, registered.id))
+			throw privilegedCustomerError(409);
+	}
 	const guest =
 		registered ??
 		(await db

@@ -3,6 +3,7 @@ import {
 	createRootRouteWithContext,
 	HeadContent,
 	Scripts,
+	useRouter,
 	useRouterState,
 } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef } from "react";
@@ -120,13 +121,16 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 function RootDocument({ children }: { children: React.ReactNode }) {
 	const brand = Route.useLoaderData();
 	const locale = getLocale();
+	const nonce = useRouter().options.ssr?.nonce;
 	useEffect(() => {
 		document.documentElement.lang = locale;
 	}, [locale]);
 	return (
 		<html lang={locale} suppressHydrationWarning>
 			<head>
-				<script suppressHydrationWarning>{THEME_INIT_SCRIPT}</script>
+				<script nonce={nonce} suppressHydrationWarning>
+					{THEME_INIT_SCRIPT}
+				</script>
 				<HeadContent />
 			</head>
 			<body className="antialiased wrap-anywhere">

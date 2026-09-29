@@ -42,6 +42,44 @@ describe("commerce system settings persistence", () => {
 
 	afterAll(async () => miniflare.dispose());
 
+	it("only lets the initialized data encryption keyring change through rotation", async () => {
+		const keyring = "k".repeat(32);
+		await saveSystemSettings(
+			[{ key: "runtime.data_encryption_secret", value: keyring }],
+			{ db, cache, userId: "root-user" },
+		);
+		await expect(
+			saveSystemSettings(
+				[{ key: "runtime.data_encryption_secret", value: "r".repeat(32) }],
+				{ db, cache, userId: "root-user" },
+			),
+		).rejects.toMatchObject({ code: "settings_keyring_rotate_only" });
+		await expect(
+			saveSystemSettings(
+				[{ key: "runtime.data_encryption_secret", value: "r".repeat(32) }],
+				{ db, cache, userId: "root-user", allowKeyringReplacement: true },
+			),
+		).resolves.toMatchObject({ updated: ["runtime.data_encryption_secret"] });
+		const listed = await listSystemSettings(db);
+		const secret = listed.find(
+			(item) => item.key === "runtime.data_encryption_secret",
+		);
+		expect(secret).toMatchObject({ value: "", configured: true });
+		await expect(
+			saveSystemSettings([{ key: "security.allowed_hosts", value: [] }], {
+				db,
+				cache,
+				userId: "root-user",
+			}),
+		).rejects.toThrow();
+		await expect(
+			saveSystemSettings(
+				[{ key: "security.client_ip_source", value: "x-real-ip" }],
+				{ db, cache, userId: "root-user" },
+			),
+		).resolves.toMatchObject({ updated: ["security.client_ip_source"] });
+	});
+
 	it("persists commerce operations settings with bounded validation", async () => {
 		await saveSystemSettings(
 			[
@@ -112,7 +150,7 @@ describe("commerce system settings persistence", () => {
 		await expect(listSystemSettings(db)).resolves.toContainEqual(
 			expect.objectContaining({
 				key: "runtime.data_encryption_secret",
-				value: "configured-secret",
+				value: "",
 				configured: true,
 			}),
 		);

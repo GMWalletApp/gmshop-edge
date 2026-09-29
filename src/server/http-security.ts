@@ -1,6 +1,37 @@
-export function applySecurityHeaders(request: Request, response: Response) {
+/**
+ * Header carrying the per-request CSP nonce from the entry point to the SSR
+ * renderer. Set only by the server; any client-supplied value is discarded.
+ */
+export const CSP_NONCE_HEADER = "x-gmshop-csp-nonce";
+
+export function createCspNonce() {
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	return btoa(String.fromCharCode(...bytes));
+}
+
+export function cspNonce(request: Request) {
+	const value = request.headers.get(CSP_NONCE_HEADER);
+	return value && /^[A-Za-z0-9+/=]{16,64}$/.test(value) ? value : null;
+}
+
+export function applySecurityHeaders(
+	request: Request,
+	response: Response,
+	options: { nonce?: string | null } = {},
+) {
 	const headers = new Headers(response.headers);
-	const scriptSources = ["'self'", "'unsafe-inline'"];
+	// With a nonce, CSP3 browsers only run scripts that carry it (plus the
+	// scripts those load); 'self'/https:/'unsafe-inline' remain as the fallback
+	// for older policy levels. Without a nonce (development server) inline
+	// scripts stay allowed.
+	const scriptSources = options.nonce
+		? [
+				`'nonce-${options.nonce}'`,
+				"'strict-dynamic'",
+				"'self'",
+				"'unsafe-inline'",
+			]
+		: ["'self'", "'unsafe-inline'"];
 	headers.set("x-content-type-options", "nosniff");
 	headers.set("x-frame-options", "DENY");
 	headers.set("referrer-policy", "strict-origin-when-cross-origin");

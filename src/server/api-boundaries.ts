@@ -6,8 +6,22 @@ const paymentWebhookPattern = new RegExp(
 	`^/api/shop/payments/${uuidSegment}/webhook$`,
 	"i",
 );
+// Machine endpoints authenticate themselves (HMAC API keys, provider
+// signatures); they must bypass the session-only protected API gate.
+const supplierApiResource = "[^/]{1,200}";
+const supplierApiGetPattern = new RegExp(
+	`^/api/v1/supplier/(?:categories|payment-channels|products(?:/${supplierApiResource})?|orders/${supplierApiResource}|topups/${supplierApiResource})$`,
+);
+const supplierApiPostPattern = new RegExp(
+	`^/api/v1/supplier/(?:ping|orders|orders/${supplierApiResource}/cancel|topups)$`,
+);
+const dujiaoCallbackPattern = new RegExp(
+	`^/api/suppliers/dujiao-next/callback/${uuidSegment}$`,
+	"i",
+);
 const publicGetPatterns = [
 	/^\/api\/support\/web\/(?:status|current)$/,
+	supplierApiGetPattern,
 	paymentWebhookPattern,
 	new RegExp(`^/api/configuration-logo/payment/${uuidSegment}$`, "i"),
 	/^\/api\/configuration-logo\/auth\/[a-z][a-z0-9_-]{1,63}$/,
@@ -16,6 +30,8 @@ const publicGetPatterns = [
 ];
 const publicPostPatterns = [
 	/^\/api\/support\/web\/(?:conversations|messages|replies\/ack|close)$/,
+	supplierApiPostPattern,
+	dujiaoCallbackPattern,
 	/^\/api\/telegram\/webhook$/,
 	paymentWebhookPattern,
 	new RegExp(

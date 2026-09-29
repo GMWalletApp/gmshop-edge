@@ -412,7 +412,8 @@ function jsonRequest(
 			"Content-Type": "application/json",
 			Origin: "https://shop.example",
 			...(cookie ? { Cookie: cookie } : {}),
-			"cf-connecting-ip": clientIp ?? `198.51.100.${authEmailRequestAddress++}`,
+			"x-gmshop-client-ip":
+				clientIp ?? `198.51.100.${authEmailRequestAddress++}`,
 		},
 		body: JSON.stringify(body),
 	});
