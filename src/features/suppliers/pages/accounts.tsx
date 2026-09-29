@@ -26,6 +26,8 @@ import { PageHeader } from "#/layouts/components/page-header";
 import { formatDateTime, formatMinorAmount } from "#/lib/format";
 import { useCurrentProTableUrlState } from "#/lib/pro-table-url-state";
 import { m } from "#/paraglide/messages";
+import { supplierProviderLabel } from "../provider-label";
+import { supplierProviderSchema } from "../schema";
 import {
 	listSupplierAccountsFn,
 	saveSupplierAccountFn,
@@ -136,7 +138,7 @@ export function SupplierAccountsPage() {
 					<div>
 						<div>{row.original.normalizedApiOrigin}</div>
 						<div className="text-muted-foreground text-xs">
-							{providerLabel(row.original.provider)} ·{" "}
+							{supplierProviderLabel(row.original.provider)} ·{" "}
 							{row.original.protocolVersion}
 						</div>
 					</div>
@@ -333,11 +335,10 @@ function accountFormSchema(editing: boolean) {
 			required: true,
 			fieldProps: {
 				disabled: editing,
-				options: [
-					{ value: "acg", label: "异次元发卡" },
-					{ value: "dujiao_next", label: "独角数卡 Next" },
-					{ value: "gmshop_edge", label: m.supplier_provider_gmshop_edge() },
-				],
+				options: supplierProviderSchema.options.map((value) => ({
+					value,
+					label: supplierProviderLabel(value),
+				})),
 			},
 		},
 		{
@@ -483,13 +484,6 @@ function accountValues(account: Account | null) {
 		lowBalanceMinor: account?.lowBalanceMinor ?? "0",
 		maxOrderCostMinor: account?.maxOrderCostMinor ?? "",
 	};
-}
-
-function providerLabel(provider: string) {
-	if (provider === "acg") return "异次元发卡";
-	return provider === "gmshop_edge"
-		? m.supplier_provider_gmshop_edge()
-		: "独角数卡 Next";
 }
 
 function healthLabel(status: Account["healthStatus"]) {

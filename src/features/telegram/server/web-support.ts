@@ -4,9 +4,11 @@ import { isInternalIdentityEmail } from "#/features/auth/identity-email";
 import { getStoreSessionUser } from "#/features/storefront/server/account";
 import { encryptSecret } from "#/lib/secrets";
 import { m } from "#/paraglide/messages";
+import { clientIp } from "#/server/client-ip";
 import { claimFixedWindowRateLimit } from "#/server/rate-limit";
 import { loadTelegramSettings } from "../settings";
 import {
+	describeDevice,
 	parseDevice,
 	type webSupportConversationSchema,
 	type webSupportMessageSchema,
@@ -15,7 +17,11 @@ import { telegramDataKeyId } from "./secret";
 import { telegramRuntime } from "./sync";
 
 const encoder = new TextEncoder();
-const replyRetentionMs = 86_400_000;
+/**
+ * Retention for web-support runtime rows: encrypted replies awaiting pickup,
+ * send receipts, and the keyed device-fingerprint hash of a conversation.
+ */
+export const webSupportRetentionMs = 86_400_000;
 export const webSupportCookieName = "gmshop_web_support";
 
 export class WebSupportError extends Error {
@@ -154,7 +160,7 @@ export async function createWebSupportConversation(
 			.run();
 		await api.sendMessage(
 			settings.supportChatId,
-			formatDiagnostics(request, email, input, repeated),
+			formatDiagnostics(request, email, input, { repeated, fingerprint }),
 			{ message_thread_id: topic.message_thread_id },
 		);
 		return { id, status: "active" as const, sessionToken };
@@ -299,7 +305,7 @@ export async function closeWebSupportConversation(
 	await db
 		.prepare(
 			`UPDATE telegram_web_support_conversations SET status = 'closed', closed_reason = 'customer',
-		 closed_at = ?, updated_at = ? WHERE id = ?`,
+		 fingerprint_hash = NULL, closed_at = ?, updated_at = ? WHERE id = ?`,
 		)
 		.bind(now, now, conversation.id)
 		.run();
@@ -342,7 +348,7 @@ export async function storeWebAdministratorReply(
 				envelope.wrappedKey,
 				envelope.iv,
 				envelope.ciphertext,
-				now + replyRetentionMs,
+				now + webSupportRetentionMs,
 				now,
 			),
 		db
@@ -378,7 +384,7 @@ export async function closeWebConversationFromTopic(
 	return db
 		.prepare(
 			`UPDATE telegram_web_support_conversations SET status = 'closed', closed_reason = 'administrator',
-		 closed_at = ?, updated_at = ? WHERE support_chat_id = ? AND message_thread_id = ? AND status = 'active'`,
+		 fingerprint_hash = NULL, closed_at = ?, updated_at = ? WHERE support_chat_id = ? AND message_thread_id = ? AND status = 'active'`,
 		)
 		.bind(now, now, supportChatId, threadId)
 		.run();
@@ -530,11 +536,16 @@ async function sessionHash(value: string) {
 	);
 }
 
+/**
+ * Administrator-facing summary posted into the new support topic. The visitor
+ * reference is a prefix of the stored keyed fingerprint hash (or of the client
+ * conversation UUID); the raw FingerprintJS identifier never leaves the server.
+ */
 function formatDiagnostics(
 	request: Request,
 	email: string,
 	input: z.infer<typeof webSupportConversationSchema>,
-	repeated: boolean,
+	visitor: { repeated: boolean; fingerprint: string | null },
 ) {
 	const device = parseDevice(request.headers.get("user-agent"));
 	const cf = (request as Request & { cf?: Record<string, unknown> }).cf ?? {};
@@ -545,30 +556,17 @@ function formatDiagnostics(
 		typeof value === "string" && value.trim()
 			? value.trim().slice(0, 100)
 			: unknown;
-	const deviceType =
-		device.deviceType === "desktop"
-			? m.telegram_web_support_device_desktop({}, options)
-			: device.deviceType === "phone"
-				? m.telegram_web_support_device_phone({}, options)
-				: device.deviceType === "tablet"
-					? m.telegram_web_support_device_tablet({}, options)
-					: m.telegram_web_support_device_unknown({}, options);
-	const localizedDevice = device.deviceDetails
-		? `${deviceType} · ${device.deviceDetails}`
-		: deviceType;
 	const ip = trustedClientIp(request);
 	return m.telegram_web_support_diagnostics(
 		{
 			email,
-			visitor: input.fingerprint
-				? input.fingerprint.visitorId.slice(0, 12)
-				: input.visitorId.slice(0, 12),
-			repeated: repeated
+			visitor: (visitor.fingerprint ?? input.visitorId).slice(0, 12),
+			repeated: visitor.repeated
 				? m.telegram_web_support_yes({}, options)
 				: m.telegram_web_support_no({}, options),
-			browser: device.browser === "Unknown" ? unknown : device.browser,
-			system: device.system === "Unknown" ? unknown : device.system,
-			device: localizedDevice,
+			browser: device.browser ?? unknown,
+			system: device.system ?? unknown,
+			device: describeDevice(device, locale),
 			timeZone: input.diagnostics.timeZone,
 			ip: ip === "unknown" ? unknown : ip,
 			location: [line(cf.country), line(cf.region), line(cf.city)].join(" · "),
@@ -579,8 +577,7 @@ function formatDiagnostics(
 }
 
 function trustedClientIp(request: Request) {
-	if (!(request as Request & { cf?: unknown }).cf) return "unknown";
-	return request.headers.get("cf-connecting-ip")?.slice(0, 45) || "unknown";
+	return clientIp(request) ?? "unknown";
 }
 
 function isMissingTopicError(error: unknown) {

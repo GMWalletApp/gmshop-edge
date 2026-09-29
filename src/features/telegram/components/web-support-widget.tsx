@@ -38,6 +38,17 @@ function formatMessageTime(timestamp: number) {
 	}).format(timestamp);
 }
 
+function deriveDeviceFingerprint() {
+	return import("@fingerprintjs/fingerprintjs")
+		.then((module) => module.default.load({ monitoring: false }))
+		.then((agent) => agent.get())
+		.then((result) => ({
+			visitorId: result.visitorId,
+			version: result.version,
+		}))
+		.catch(() => undefined);
+}
+
 export function WebSupportWidget() {
 	const session = authClient.useSession();
 	const [available, setAvailable] = useState(false);
@@ -155,16 +166,11 @@ export function WebSupportWidget() {
 		setBusy(true);
 		setError(null);
 		try {
+			// Reopening an existing conversation never stores a fingerprint, so the
+			// device identifier is only derived when a new conversation starts.
 			const [identity, fingerprint] = await Promise.all([
 				getWebSupportIdentity(),
-				import("@fingerprintjs/fingerprintjs")
-					.then((module) => module.default.load({ monitoring: false }))
-					.then((agent) => agent.get())
-					.then((result) => ({
-						visitorId: result.visitorId,
-						version: result.version,
-					}))
-					.catch(() => undefined),
+				status === "closed" ? undefined : deriveDeviceFingerprint(),
 			]);
 			const response = await fetch("/api/support/web/conversations", {
 				method: "POST",
@@ -288,6 +294,9 @@ export function WebSupportWidget() {
 										aria-label={m.web_support_email()}
 									/>
 								) : null}
+								<p className="text-muted-foreground text-xs leading-5">
+									{m.web_support_device_notice()}
+								</p>
 								{error ? (
 									<p className="text-sm text-destructive" role="alert">
 										{error}

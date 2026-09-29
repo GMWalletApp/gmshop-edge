@@ -1,5 +1,7 @@
 import Bowser from "bowser";
 import { z } from "zod";
+import type { SupportedLocale } from "#/lib/locales";
+import { m } from "#/paraglide/messages";
 
 const publicKeySchema = z.looseObject({
 	kty: z.literal("RSA"),
@@ -38,51 +40,71 @@ export const webSupportAckSchema = z.object({
 	ids: z.array(z.uuid()).min(1).max(100),
 });
 
-export function parseDevice(userAgent: string | null) {
+export type ParsedDevice = {
+	browser: string | null;
+	system: string | null;
+	deviceType: "phone" | "tablet" | "desktop" | "unknown";
+	deviceDetails: string | null;
+};
+
+export function parseDevice(userAgent: string | null): ParsedDevice {
 	const ua = (userAgent ?? "").slice(0, 512);
 	if (!ua)
 		return {
-			browser: "Unknown",
-			system: "Unknown",
-			device: "Unknown device",
-			deviceType: "unknown" as const,
-			deviceDetails: undefined,
+			browser: null,
+			system: null,
+			deviceType: "unknown",
+			deviceDetails: null,
 		};
 	const parsed = Bowser.parse(ua);
-	const browser = formatParsedName(parsed.browser.name, parsed.browser.version);
-	const system = formatParsedName(parsed.os.name, parsed.os.version);
-	const category =
+	const deviceType =
 		parsed.platform.type === "mobile"
-			? ({ label: "Phone", type: "phone" } as const)
+			? "phone"
 			: parsed.platform.type === "tablet"
-				? ({ label: "Tablet", type: "tablet" } as const)
+				? "tablet"
 				: parsed.platform.type === "desktop"
-					? ({ label: "Desktop", type: "desktop" } as const)
-					: ({ label: "Unknown device", type: "unknown" } as const);
-	const details = sanitizeDeviceDetails(
-		[parsed.platform.vendor, parsed.platform.model].filter(Boolean).join(" ") ||
-			(category.type === "desktop" ? parsed.os.name : undefined),
-	);
+					? "desktop"
+					: "unknown";
 	return {
-		browser,
-		system,
-		device: details ? `${category.label} · ${details}` : category.label,
-		deviceType: category.type,
-		deviceDetails: details,
+		browser: formatParsedName(parsed.browser.name, parsed.browser.version),
+		system: formatParsedName(parsed.os.name, parsed.os.version),
+		deviceType,
+		deviceDetails: sanitizeDeviceDetails(
+			[parsed.platform.vendor, parsed.platform.model]
+				.filter(Boolean)
+				.join(" ") || (deviceType === "desktop" ? parsed.os.name : undefined),
+		),
 	};
+}
+
+const deviceCategoryLabels = {
+	phone: m.telegram_web_support_device_phone,
+	tablet: m.telegram_web_support_device_tablet,
+	desktop: m.telegram_web_support_device_desktop,
+	unknown: m.telegram_web_support_device_unknown,
+} as const;
+
+/** Human-readable device line for the given locale, e.g. "Desktop · Windows". */
+export function describeDevice(device: ParsedDevice, locale: SupportedLocale) {
+	const category = deviceCategoryLabels[device.deviceType]({}, { locale });
+	return device.deviceDetails
+		? `${category} · ${device.deviceDetails}`
+		: category;
 }
 
 function formatParsedName(name?: string, version?: string) {
 	return (
 		[name, version?.split(".").slice(0, 2).join(".")]
 			.filter(Boolean)
-			.join(" ") || "Unknown"
+			.join(" ") || null
 	);
 }
 
 function sanitizeDeviceDetails(value?: string) {
-	return value
-		?.replace(/[^\p{L}\p{N} ._+-]/gu, "")
-		.trim()
-		.slice(0, 60);
+	return (
+		value
+			?.replace(/[^\p{L}\p{N} ._+-]/gu, "")
+			.trim()
+			.slice(0, 60) || null
+	);
 }

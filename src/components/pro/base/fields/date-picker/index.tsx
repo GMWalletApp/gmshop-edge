@@ -1,10 +1,10 @@
 "use client";
 
-import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import { cn } from "#/lib/utils.ts";
 import { m } from "#/paraglide/messages";
+import { getLocale } from "#/paraglide/runtime";
 import { FieldCalendar } from "../shared/calendar";
 import {
 	FieldClearAction,
@@ -40,7 +40,7 @@ export function DatePicker({
 					>
 						<CalendarIcon className="mr-2 size-4" />
 						<span className="min-w-0 flex-1 truncate text-left">
-							{value ? format(value, "PPP") : placeholder}
+							{value ? formatPickedDate(value, "long") : placeholder}
 						</span>
 						<span className="relative flex size-4 shrink-0 items-center justify-center">
 							{value && !disabled && (
@@ -130,7 +130,11 @@ function getDateRangeLabel(
 	placeholder: string,
 ) {
 	if (from && to)
-		return `${format(from, "LLL dd, y")} - ${format(to, "LLL dd, y")}`;
-	if (from) return format(from, "LLL dd, y");
+		return `${formatPickedDate(from, "medium")} - ${formatPickedDate(to, "medium")}`;
+	if (from) return formatPickedDate(from, "medium");
 	return placeholder;
+}
+
+function formatPickedDate(value: Date, dateStyle: "long" | "medium") {
+	return new Intl.DateTimeFormat(getLocale(), { dateStyle }).format(value);
 }

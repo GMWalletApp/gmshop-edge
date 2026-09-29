@@ -30,6 +30,7 @@ import { formatDateTime, formatMinorAmount, formatNumber } from "#/lib/format";
 import { useCurrentProTableUrlState } from "#/lib/pro-table-url-state";
 import { m } from "#/paraglide/messages";
 import { supplierErrorLabel } from "../error-label";
+import { supplierProviderLabel } from "../provider-label";
 import {
 	getSupplierSyncSettingsFn,
 	saveSupplierSyncSettingsFn,
@@ -244,7 +245,7 @@ export function SupplierProductsPage() {
 								{String(row.original.productName)}
 							</strong>
 							<Badge variant="outline">
-								{providerLabel(row.original.source.provider)}
+								{supplierProviderLabel(row.original.source.provider)}
 							</Badge>
 						</div>
 						<div className="flex items-center justify-between gap-3">
@@ -496,7 +497,7 @@ export function SupplierProductsPage() {
 								{ value: ALL_SOURCES, label: m.supplier_all_sources() },
 								...(sources.data ?? []).map((item) => ({
 									value: keyOf(item),
-									label: `${providerLabel(item.provider)} · ${item.normalizedApiOrigin}`,
+									label: `${supplierProviderLabel(item.provider)} · ${item.normalizedApiOrigin}`,
 								})),
 							]}
 							placeholder={m.supplier_no_source()}
@@ -596,7 +597,7 @@ export function SupplierProductsPage() {
 							fieldProps: {
 								options: (targets.data ?? []).map((target) => ({
 									value: target.id,
-									label: `${target.product_name} · ${target.sellable_item_name} · ${providerLabel(target.provider as Source["provider"])}`,
+									label: `${target.product_name} · ${target.sellable_item_name} · ${supplierProviderLabel(target.provider)}`,
 								})),
 							},
 						},
@@ -758,13 +759,6 @@ function supplierSyncStatusText(settings: SyncSettings | undefined) {
 
 function keyOf(source: Source) {
 	return `${source.provider}:${source.normalizedApiOrigin}`;
-}
-
-function providerLabel(provider: Source["provider"]) {
-	if (provider === "acg") return "异次元发卡";
-	return provider === "gmshop_edge"
-		? m.supplier_provider_gmshop_edge()
-		: "独角数卡 Next";
 }
 
 function SupplierAvailabilityBadge({ status }: { status: string }) {

@@ -283,7 +283,7 @@ automatic synchronization can continue.
 
 ### Requirements
 
-- [Bun](https://bun.sh/) 1.3 or later
+- [Bun](https://bun.sh/) 1.4.2 or later
 - A local environment supported by
   [Wrangler](https://developers.cloudflare.com/workers/wrangler/)
 
@@ -336,7 +336,6 @@ Common development commands:
 ```bash
 bun run dev
 bun run db:migrate:local
-bun run generate-routes
 bun run typecheck
 bun run test
 bun run check
@@ -408,6 +407,29 @@ instance. Its machine-readable source is [OpenAPI YAML](public/openapi.yaml).
   than treating backups as complete when they have not been restored.
 - Back up the complete Bun data directory before container upgrades; use the
   maintained data CLI rather than copying a live SQLite file.
+- Web support derives a browser fingerprint only to rate-limit abuse and flag
+  repeat conversations. It is stored as a keyed hash, disclosed to visitors in
+  the widget, cleared when the conversation closes, and purged by maintenance
+  24 hours after the last activity.
+- The trusted visitor address comes from the `Client IP source` setting:
+  Workers read Cloudflare's header; Bun anchors on the connection peer and
+  trusts `X-Real-IP` / `X-Forwarded-For` only when the connection arrives from
+  a loopback or private-network proxy, so forged headers from the public
+  internet are ignored by default. Select a specific header for a proxy on a
+  public address, or `none` to always use the connection peer. Rate limits,
+  audit records, Better Auth throttling, and the forwarded HTTPS scheme all
+  derive from that one decision.
+- Runtime secrets never leave the server: the settings page only learns whether
+  a value is configured, and the data-encryption keyring can be rotated but
+  not replaced. Production responses carry a per-request CSP nonce, so only
+  scripts rendered by the server run in the browser.
+- A verified payment that arrives after an order expired revives and fulfils
+  the order; a verified payment for any other unpayable subject is stored as a
+  rejected replay receipt with a `payment.unmatched` audit entry for manual
+  refund or credit. Stale deliveries and refunds without a live queue message
+  are re-requested by the scheduler, and permanent domain failures are
+  acknowledged with a `queue.message_failed` audit entry instead of being
+  dead-lettered.
 
 ## License
 

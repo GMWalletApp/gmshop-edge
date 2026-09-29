@@ -5,6 +5,7 @@ import type { z } from "zod";
 import { requireAdmin } from "#/features/access/server/require-admin";
 import { systemPermission } from "#/features/access/system-rbac";
 import { DomainError } from "#/lib/domain-error";
+import { clientIp } from "#/server/client-ip";
 import { getCloudflareEnv } from "#/server/db.server";
 import {
 	loadTelegramSettings,
@@ -13,7 +14,12 @@ import {
 	upsertTelegramSetting,
 } from "../settings";
 import { synchronizeSupportAdministrators } from "./support-admins";
-import { synchronizeTelegramBot, telegramRuntime } from "./sync";
+import {
+	logTelegramFailure,
+	supportChatErrorCode,
+	synchronizeTelegramBot,
+	telegramRuntime,
+} from "./sync";
 
 export const getTelegramSettingsFn = createServerFn({ method: "GET" }).handler(
 	async () => {
@@ -94,8 +100,14 @@ export const saveTelegramSettingsFn = createServerFn({ method: "POST" })
 				if (!validation.available)
 					throw new Error("telegram_support_dependency_unavailable");
 			} catch (error) {
+				const code = supportChatErrorCode(error);
+				logTelegramFailure(
+					"telegram_support_chat_validation_failed",
+					code,
+					error,
+				);
 				throw new DomainError(
-					error instanceof Error ? error.message : "telegram_support_invalid",
+					code,
 					409,
 					"Telegram support chat validation failed",
 				);
@@ -217,7 +229,7 @@ function auditStatement(
 			context.user.id,
 			action,
 			context.request.headers.get("x-request-id"),
-			context.request.headers.get("cf-connecting-ip"),
+			clientIp(context.request),
 			JSON.stringify(after),
 			now,
 		);

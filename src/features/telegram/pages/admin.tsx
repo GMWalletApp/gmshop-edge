@@ -9,10 +9,10 @@ import { Switch } from "#/components/pro/base/fields/checkbox";
 import { ProDescriptions } from "#/components/pro/descriptions";
 import { formBooleanValue, ModalForm } from "#/components/pro/form";
 import { Badge } from "#/components/ui/badge";
-import { settingsErrorMessage } from "#/features/settings/error-message";
 import { PageHeader } from "#/layouts/components/page-header";
 import { formatDateTime } from "#/lib/format";
 import { m } from "#/paraglide/messages";
+import { telegramErrorLabel, telegramErrorMessage } from "../error-message";
 import {
 	getTelegramSettingsFn,
 	saveTelegramSettingsFn,
@@ -31,7 +31,7 @@ export function TelegramSettingsPage() {
 			await refresh();
 			toast.success(m.telegram_sync_succeeded());
 		},
-		onError: (error) => toast.error(settingsErrorMessage(error)),
+		onError: (error) => toast.error(telegramErrorMessage(error)),
 	});
 	const data = query.data;
 	return (
@@ -118,7 +118,7 @@ function SupportSettingsModal({
 				await onSaved();
 				toast.success(m.settings_saved());
 			}}
-			onFinishFailed={(error) => toast.error(settingsErrorMessage(error))}
+			onFinishFailed={(error) => toast.error(telegramErrorMessage(error))}
 		/>
 	);
 }
@@ -216,7 +216,7 @@ function SyncSettingsModal({
 					syncAfterSave.current = false;
 				}
 			}}
-			onFinishFailed={(error) => toast.error(settingsErrorMessage(error))}
+			onFinishFailed={(error) => toast.error(telegramErrorMessage(error))}
 		/>
 	);
 }
@@ -422,18 +422,6 @@ function statusLabel(status: string | undefined) {
 		dependency_unavailable: m.telegram_status_dependency_unavailable,
 	};
 	return labels[status]?.() ?? m.status_unknown();
-}
-
-function telegramErrorLabel(code: string | null | undefined) {
-	if (!code) return undefined;
-	const labels: Record<string, () => string> = {
-		dependency_unavailable: m.telegram_error_dependency_unavailable,
-		telegram_bot_identity_changed: m.telegram_error_identity_changed,
-		telegram_bot_token_invalid: m.telegram_error_token_invalid,
-		telegram_request_rejected: m.telegram_error_request_rejected,
-		sync_failed: m.telegram_status_failed,
-	};
-	return labels[code]?.() ?? m.telegram_status_failed();
 }
 
 function webhookStatusLabel(status: string) {

@@ -5,10 +5,13 @@ import { telegramSettingKeys, upsertTelegramSetting } from "../settings";
 import { telegramWebhookSigningKeyId } from "./secret";
 import { synchronizeSupportAdministrators } from "./support-admins";
 import {
+	logTelegramFailure,
+	supportChatErrorCode,
 	synchronizeTelegramBot,
 	telegramCommandVersion,
 	telegramRuntime,
 } from "./sync";
+import { webSupportRetentionMs } from "./web-support";
 
 export async function runTelegramMaintenance(db: D1Database, now = Date.now()) {
 	const sync = await reconcileBot(db, now);
@@ -23,11 +26,9 @@ export async function runTelegramMaintenance(db: D1Database, now = Date.now()) {
 		try {
 			administratorSync = await synchronizeSupportAdministrators(db, now);
 		} catch (error) {
-			administratorSync = {
-				failed: true,
-				code:
-					error instanceof Error ? error.message : "administrator_sync_failed",
-			};
+			const code = supportChatErrorCode(error);
+			logTelegramFailure("telegram_administrator_sync_failed", code, error);
+			administratorSync = { failed: true, code };
 		}
 	}
 	let idleClosed = 0;
@@ -226,7 +227,7 @@ async function closeIdleWebConversations(
 			await db
 				.prepare(
 					`UPDATE telegram_web_support_conversations SET status = 'closed', closed_reason = 'idle_timeout',
-				 closed_at = ?, updated_at = ? WHERE id = ? AND status = 'closing'`,
+				 fingerprint_hash = NULL, closed_at = ?, updated_at = ? WHERE id = ? AND status = 'closing'`,
 				)
 				.bind(now, now, conversation.id)
 				.run();
@@ -244,8 +245,14 @@ async function closeIdleWebConversations(
 	return closed;
 }
 
-async function cleanupWebSupport(db: D1Database, now: number) {
-	const [replies, sends] = await db.batch([
+/**
+ * Bounded retention sweep for web-support runtime rows. Device-fingerprint
+ * hashes are cleared when a conversation closes; this sweep also clears them
+ * for conversations idle beyond the retention window regardless of status.
+ */
+export async function cleanupWebSupport(db: D1Database, now: number) {
+	const cutoff = now - webSupportRetentionMs;
+	const [replies, sends, fingerprints] = await db.batch([
 		db
 			.prepare(
 				`DELETE FROM telegram_web_support_replies WHERE id IN (
@@ -259,11 +266,22 @@ async function cleanupWebSupport(db: D1Database, now: number) {
 			 SELECT id FROM telegram_web_support_sends WHERE created_at <= ?
 			 ORDER BY created_at, id LIMIT 500)`,
 			)
-			.bind(now - 86_400_000),
+			.bind(cutoff),
+		db
+			.prepare(
+				`UPDATE telegram_web_support_conversations SET fingerprint_hash = NULL, updated_at = ?
+			 WHERE id IN (
+			 SELECT id FROM telegram_web_support_conversations
+			 WHERE status IN ('creating', 'active', 'closing')
+			 AND fingerprint_hash IS NOT NULL AND coalesce(last_activity_at, created_at) <= ?
+			 ORDER BY id LIMIT 500)`,
+			)
+			.bind(now, cutoff),
 	]);
 	return {
 		replies: Number(replies?.meta.changes ?? 0),
 		sends: Number(sends?.meta.changes ?? 0),
+		fingerprints: Number(fingerprints?.meta.changes ?? 0),
 	};
 }
 

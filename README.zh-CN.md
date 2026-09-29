@@ -250,7 +250,7 @@ Personal Access Token，也不会强推或覆盖 Fork 独有的提交。如果�
 
 ### 环境要求
 
-- [Bun](https://bun.sh/) 1.3 或更高版本
+- [Bun](https://bun.sh/) 1.4.2 或更高版本
 - [Wrangler](https://developers.cloudflare.com/workers/wrangler/) 支持的本地运行环境
 
 安装依赖并启动本地开发服务器：
@@ -296,7 +296,6 @@ bun run dev
 ```bash
 bun run dev
 bun run db:migrate:local
-bun run generate-routes
 bun run typecheck
 bun run test
 bun run check
@@ -355,6 +354,18 @@ bun run build:bun
 - schema 或保留策略变更前备份 D1/R2，并实际测试恢复，不能把未经恢复验证的备份视为完成。
 - 容器升级前备份完整 Bun 数据目录；使用仓库维护的数据 CLI，不要复制运行中的 SQLite
   文件。
+- 网页客服仅为限流与标记重复会话而生成浏览器指纹；指纹只以加密哈希保存，并在客服组件中
+  向访客说明，会话关闭时即清除，维护任务也会在最后活动 24 小时后统一清理。
+- 可信访客地址由「客户端 IP 来源」设置决定：Workers 读取 Cloudflare 头；Bun 以连接对端为准，
+  仅当连接来自本机或内网代理时才信任 `X-Real-IP` / `X-Forwarded-For`，来自公网的伪造头默认
+  被忽略。代理位于公网地址时请指定具体的头，选择 `none` 则始终使用连接对端。限流、审计记录、
+  Better Auth 节流与转发的 HTTPS 协议判断都基于这一项设置。
+- 运行时密钥不会离开服务端：设置页只能看到「已配置」状态，数据加密密钥环只能轮换、不能替换。
+  生产响应携带每请求的 CSP nonce，浏览器只执行服务端渲染出的脚本。
+- 订单过期后到账的已验签付款会复活并履约该订单；其他不可支付主体收到的已验签付款会以
+  `rejected` 回执保存，并写入 `payment.unmatched` 审计记录供人工退款或入账。调度任务会为
+  没有活跃队列消息的滞留配送与退款重新发起请求；永久性领域错误会被确认并写入
+  `queue.message_failed` 审计记录，而不是进入死信队列。
 
 ## 许可证
 

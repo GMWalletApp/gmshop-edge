@@ -1,6 +1,8 @@
 import { Api, GrammyError } from "grammy";
 import { loadRuntimeAuthProviders } from "#/features/auth/server/provider-runtime";
+import type { SupportedLocale } from "#/lib/locales";
 import { isSafeWebhookUrl } from "#/lib/webhook-url";
+import { m } from "#/paraglide/messages";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 import {
 	loadTelegramSettings,
@@ -161,37 +163,89 @@ export function miniAppUrl(
 	return new URL(path, origin).toString();
 }
 
-async function setCommands(api: Api) {
-	const commands = [
-		["start", "Start"],
-		["support", "Contact support"],
-		["close", "Close support"],
-		["language", "Language"],
-		["help", "Help"],
-	] satisfies ReadonlyArray<readonly [string, string]>;
-	const botCommands = commands.map(([command, description]) => ({
-		command,
-		description,
-	}));
-	await api.setMyCommands(botCommands, {
-		scope: { type: "all_private_chats" },
-	});
-	await api.setMyCommands(botCommands, {
-		scope: { type: "all_private_chats" },
-		language_code: "en",
-	});
-	await api.setMyCommands(
-		(
-			[
-				["start", "开始"],
-				["support", "联系客服"],
-				["close", "关闭客服"],
-				["language", "设置语言"],
-				["help", "帮助"],
-			] satisfies ReadonlyArray<readonly [string, string]>
-		).map(([command, description]) => ({ command, description })),
-		{ scope: { type: "all_private_chats" }, language_code: "zh" },
+const botCommandDescriptions = {
+	start: m.telegram_bot_command_start,
+	support: m.telegram_bot_command_support,
+	close: m.telegram_bot_command_close,
+	language: m.telegram_bot_command_language,
+	help: m.telegram_bot_command_help,
+} as const;
+
+/** Telegram `language_code` values that receive a localized command list. */
+const botCommandLanguages = [
+	{ locale: "en-US", languageCode: "en" },
+	{ locale: "zh-CN", languageCode: "zh" },
+] as const satisfies ReadonlyArray<{
+	locale: SupportedLocale;
+	languageCode: string;
+}>;
+
+export function telegramBotCommands(locale: SupportedLocale) {
+	return Object.entries(botCommandDescriptions).map(
+		([command, description]) => ({
+			command,
+			description: description({}, { locale }),
+		}),
 	);
+}
+
+async function setCommands(api: Api) {
+	const scope = { type: "all_private_chats" } as const;
+	await api.setMyCommands(telegramBotCommands("en-US"), { scope });
+	for (const { locale, languageCode } of botCommandLanguages)
+		await api.setMyCommands(telegramBotCommands(locale), {
+			scope,
+			language_code: languageCode,
+		});
+}
+
+/**
+ * Maps a support-chat validation failure to a fixed, localizable code. The
+ * upstream Telegram description is only ever emitted through
+ * {@link logTelegramFailure}.
+ */
+export function supportChatErrorCode(error: unknown) {
+	if (error instanceof GrammyError) {
+		if (error.error_code === 401) return "telegram_bot_token_invalid";
+		if (/chat not found/i.test(error.description))
+			return "telegram_support_chat_not_found";
+		if (
+			error.error_code === 403 ||
+			/not a member|was kicked|was blocked/i.test(error.description)
+		)
+			return "telegram_bot_not_in_chat";
+		return "telegram_request_rejected";
+	}
+	const message = error instanceof Error ? error.message : "";
+	if (message === "support_chat_not_forum") return "telegram_support_not_forum";
+	if (message === "bot_cannot_manage_topics")
+		return "telegram_bot_cannot_manage_topics";
+	if (message === "telegram_support_dependency_unavailable") return message;
+	return "telegram_support_invalid";
+}
+
+const botTokenPattern = /\d{5,}:[A-Za-z0-9_-]{20,}/g;
+
+/** Structured server log for a failed Telegram request; never includes the bot token. */
+export function logTelegramFailure(
+	event: string,
+	code: string,
+	error: unknown,
+) {
+	const upstream =
+		error instanceof GrammyError
+			? {
+					method: error.method,
+					errorCode: error.error_code,
+					description: error.description,
+				}
+			: error instanceof Error
+				? {
+						name: error.name,
+						message: error.message.replaceAll(botTokenPattern, "[redacted]"),
+					}
+				: { name: typeof error };
+	console.warn(JSON.stringify({ event, code, upstream }));
 }
 
 async function storeSyncFailure(

@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import { CalendarIcon, Check, ChevronDown, ChevronUp } from "lucide-react";
 import {
 	Popover as PopoverPrimitive,
@@ -6,6 +5,7 @@ import {
 } from "radix-ui";
 import { cn } from "#/lib/utils.ts";
 import { m } from "#/paraglide/messages";
+import { getLocale } from "#/paraglide/runtime";
 import { FieldCalendar } from "../shared/calendar";
 import {
 	FieldClearAction,
@@ -54,7 +54,7 @@ export function DateTimePicker({
 					>
 						<CalendarIcon className="mr-2 size-4" />
 						<span className="min-w-0 flex-1 truncate text-left">
-							{value ? format(value, "PPP HH:mm:ss") : placeholder}
+							{value ? formatPickedDateTime(value) : placeholder}
 						</span>
 						<span className="relative flex size-4 shrink-0 items-center justify-center">
 							{value && !disabled && (
@@ -108,6 +108,14 @@ export function DateTimePicker({
 			</FieldPopoverContent>
 		</PopoverPrimitive.Root>
 	);
+}
+
+function formatPickedDateTime(value: Date) {
+	return new Intl.DateTimeFormat(getLocale(), {
+		dateStyle: "long",
+		timeStyle: "medium",
+		hourCycle: "h23",
+	}).format(value);
 }
 
 export function TimePicker({

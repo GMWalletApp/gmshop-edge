@@ -20,6 +20,7 @@ import { formatDateTime, formatMinorAmount, formatNumber } from "#/lib/format";
 import { useCurrentProTableUrlState } from "#/lib/pro-table-url-state";
 import { m } from "#/paraglide/messages";
 import { supplierErrorLabel } from "../error-label";
+import { supplierProviderLabel } from "../provider-label";
 import {
 	actSupplierOrderFn,
 	listSupplierOrdersFn,
@@ -95,7 +96,7 @@ export function SupplierOrdersPage() {
 								{String(row.original.account_name ?? "—")}
 							</span>
 							<Badge variant="outline">
-								{providerLabel(String(row.original.provider))}
+								{supplierProviderLabel(String(row.original.provider))}
 							</Badge>
 						</div>
 						<div className="text-sm">
@@ -317,11 +318,4 @@ function supplierOrderStateLabel(state: string) {
 	if (state === "failed") return m.supplier_order_state_failed();
 	if (state === "refunded") return m.supplier_order_state_refunded();
 	return state;
-}
-
-function providerLabel(provider: string) {
-	if (provider === "acg") return "异次元发卡";
-	return provider === "gmshop_edge"
-		? m.supplier_provider_gmshop_edge()
-		: "独角数卡 Next";
 }
