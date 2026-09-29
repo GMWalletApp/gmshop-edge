@@ -24,7 +24,7 @@ jobs:
       release-tag: ${{ steps.release-tag.outputs.value }}
     steps:
       - name: Check out repository and tags
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
