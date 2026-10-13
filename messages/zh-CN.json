@@ -1813,7 +1813,7 @@
 	"supply_console_restock_direct_hint": "卡密直接作为前台库存，客户收到的就是这张卡",
 	"supply_console_unit_cost": "单张进货价（元）",
 	"supply_console_keys": "卡密",
-	"supply_console_keys_hint": "每行一张，不回显原文，重复卡不会再次入库",
+	"supply_console_keys_hint": "每行一张，不回显原文，重复卡不会再次入库。菲区套餐自动按每批最多 5 张顺序处理；每次最多 100 张。",
 	"supply_console_usage_url": "客户充值地址",
 	"supply_console_usage_url_hint": "随卡密一起发给客户的 https 地址",
 	"supply_console_restock_done": "已校验 {total} 张，入库 {imported} 张",
@@ -2240,5 +2240,7 @@
 	"agent_access_reentry_notice": "使用购买时的邮箱验证登录，查看原订单；无需再次购买。这里登录的是购物账号，代理账号请前往 lsrai.shop。",
 	"agent_access_checking": "正在检查开通资格…",
 	"agent_access_reverify": "人机验证已失效，请重新完成下方验证后再发送。",
-	"agent_access_original_login": "此账号请使用原有登录方式登录后继续购买。"
+	"agent_access_original_login": "此账号请使用原有登录方式登录后继续购买。",
+	"supply_console_restock_progress": "补货进度：{completed}/{batches} 批，已确认入库 {imported} 张，商城新增 {generated} 张。处理期间请勿关闭页面。",
+	"supply_console_restock_stopped": "补货已停止：已处理 {completed}/{batches} 批，确认入库 {imported} 张，商城新增 {generated} 张。失败批次可能已部分写入，请先核对库存，不要重复提交。"
 }

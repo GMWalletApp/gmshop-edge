@@ -368,7 +368,7 @@ export async function generateRedeemSellableInventory(
 		})),
 	);
 	const now = Date.now();
-	const results = await context.db.batch([
+	await context.db.batch([
 		context.db
 			.prepare(
 				`INSERT INTO replay_receipts
@@ -426,9 +426,16 @@ export async function generateRedeemSellableInventory(
 				now,
 			),
 	]);
-	const imported = results
-		.slice(1, 1 + prepared.length)
-		.reduce((total, result) => total + Number(result.meta.changes ?? 0), 0);
+	// D1 changes includes trigger writes, so it is not a stock-entry count.
+	// Read back only the fresh IDs from this batch (ignored duplicates do not
+	// acquire these IDs), excluding audit/replay and inventory-counter writes.
+	const persisted = await context.db
+		.prepare(
+			`SELECT COUNT(*) AS count FROM stock_entries WHERE id IN (${prepared.map(() => "?").join(",")})`,
+		)
+		.bind(...prepared.map((item) => item.id))
+		.first<{ count: number }>();
+	const imported = Number(persisted?.count ?? 0);
 	return { idempotent: false, imported, count: data.count };
 }
 

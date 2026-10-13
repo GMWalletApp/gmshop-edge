@@ -1813,7 +1813,7 @@
 	"supply_console_restock_direct_hint": "Keys become storefront stock; the customer receives this card",
 	"supply_console_unit_cost": "Unit purchase cost (CNY)",
 	"supply_console_keys": "Keys",
-	"supply_console_keys_hint": "One per line; keys are never echoed and duplicates are skipped",
+	"supply_console_keys_hint": "One per line; keys are never echoed and duplicates are skipped Philippines plans are processed sequentially in batches of up to 5, with at most 100 keys per submission.",
 	"supply_console_usage_url": "Customer recharge URL",
 	"supply_console_usage_url_hint": "The https address delivered together with the key",
 	"supply_console_restock_done": "Validated {total}, stocked {imported}",
@@ -2240,5 +2240,7 @@
 	"agent_access_reentry_notice": "Use your purchase email to sign in and view your original order; no new purchase is needed. This signs in to the shopping account. Agent accounts sign in at lsrai.shop.",
 	"agent_access_checking": "Checking activation eligibility…",
 	"agent_access_reverify": "Human verification expired. Complete the verification below before sending again.",
-	"agent_access_original_login": "Sign in using this account’s existing sign-in method, then continue your purchase."
+	"agent_access_original_login": "Sign in using this account’s existing sign-in method, then continue your purchase.",
+	"supply_console_restock_progress": "Restock progress: {completed}/{batches} batches; {imported} keys imported, {generated} storefront codes added. Keep this page open.",
+	"supply_console_restock_stopped": "Restock stopped: {completed}/{batches} batches processed; {imported} imports and {generated} storefront codes confirmed. The failed batch may have partially written. Check inventory before resubmitting."
 }

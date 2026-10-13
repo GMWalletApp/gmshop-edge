@@ -17,6 +17,7 @@ vi.mock("#/server/context", () => ({
 }));
 
 import { requestWarehouse } from "#/features/redeem-warehouse/server/admin";
+import { restockInBatches } from "#/features/supply-console/restock-batches";
 import {
 	listSupplyConsole,
 	supplyMapKey,
@@ -305,6 +306,109 @@ describe("supply console", { timeout: 30_000 }, () => {
 			.bind(CENTRAL_ITEM)
 			.first<{ count: number }>();
 		expect(stock?.count).toBe(5);
+	});
+
+	it("imports 30 PH keys through the real restock path once and adds exactly 30 storefront codes", async () => {
+		await db
+			.prepare("UPDATE system_settings SET value=? WHERE key=?")
+			.bind(JSON.stringify({ [CENTRAL_ITEM]: "GPT_PLUS_PH" }), supplyMapKey)
+			.run();
+		const imported = new Set<string>();
+		let batches = 0;
+		const request: typeof requestWarehouse = async (_token, path, init) => {
+			const body = JSON.parse(String(init?.body));
+			if (path.endsWith("/inventory/import")) {
+				if (body.keys.length > 5) throw new Error("input.batch_too_large");
+				batches++;
+				const results = body.keys.map((key: string, index: number) => {
+					const status = imported.has(key) ? "duplicate" : "available";
+					imported.add(key);
+					return { index, status };
+				});
+				return {
+					success: true,
+					data: {
+						total: body.keys.length,
+						imported: results.filter(
+							(item: { status: string }) => item.status === "available",
+						).length,
+						results,
+					},
+				};
+			}
+			if (path.endsWith("/codes/batch"))
+				return {
+					success: true,
+					data: {
+						sku: "GPT_PLUS_PH",
+						count: body.count,
+						codes: Array.from(
+							{ length: body.count },
+							(_, i) => `gpt-plus-ph-${body.request_ref}-${i}-synthetic`,
+						),
+					},
+				};
+			throw new Error("Unexpected path");
+		};
+		const count = async () =>
+			(
+				await db
+					.prepare(
+						"SELECT count(*) n FROM stock_entries WHERE sellable_item_id=?",
+					)
+					.bind(CENTRAL_ITEM)
+					.first<{ n: number }>()
+			)?.n ?? 0;
+		const before = await count();
+		const data = {
+			requestRef: "supply_ph_thirty_test",
+			componentId: CENTRAL_ITEM,
+			unitCostYuan: "113",
+			content: Array.from({ length: 30 }, (_, i) => `synthetic-ph-${i}`).join(
+				"\n",
+			),
+		};
+		const send = async ({
+			data: payload,
+		}: {
+			data: Parameters<typeof restockSupply>[0];
+		}) => restockSupply(payload, testContext(db), request);
+		try {
+			const result = await restockInBatches(
+				data,
+				"GPT_PLUS_PH",
+				send,
+				undefined,
+				async () => {},
+			);
+			expect(result).toMatchObject({
+				total: 30,
+				imported: 30,
+				generated: 30,
+				generationFailed: false,
+			});
+			expect(batches).toBe(6);
+			expect(await count()).toBe(before + 30);
+			const retry = await restockInBatches(
+				{ ...data, requestRef: "supply_ph_thirty_retry" },
+				"GPT_PLUS_PH",
+				send,
+				undefined,
+				async () => {},
+			);
+			expect(retry).toMatchObject({
+				total: 30,
+				imported: 0,
+				generated: 0,
+				counts: { duplicate: 30 },
+			});
+			expect(await count()).toBe(before + 30);
+		} finally {
+			await db
+				.prepare("UPDATE system_settings SET value=? WHERE key=?")
+				.bind(JSON.stringify({ [CENTRAL_ITEM]: "GPT_20X_IOS" }), supplyMapKey)
+				.run();
+		}
 	});
 
 	it("stores unmapped SKU keys as storefront stock with their recharge URL", async () => {

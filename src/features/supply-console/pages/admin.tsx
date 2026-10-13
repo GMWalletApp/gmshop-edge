@@ -22,6 +22,11 @@ import {
 import { PageHeader } from "#/layouts/components/page-header";
 import { formatDateTime, formatMinorAmountWithSymbol } from "#/lib/format";
 import { m } from "#/paraglide/messages";
+import {
+	RestockBatchError,
+	type RestockProgress,
+	restockInBatches,
+} from "../restock-batches";
 import { listSupplyConsoleFn } from "../server/query";
 import { restockSupplyFn } from "../server/restock";
 
@@ -31,6 +36,8 @@ type Row = Awaited<ReturnType<typeof listSupplyConsoleFn>>[number];
 
 export function SupplyConsolePage() {
 	const client = useQueryClient();
+	const [restockProgress, setRestockProgress] =
+		useState<RestockProgress | null>(null);
 	const [expanded, setExpanded] = useState<string | null>(null);
 	const supply = useQuery({
 		queryKey: consoleKey,
@@ -62,7 +69,17 @@ export function SupplyConsolePage() {
 		onError: () => toast.error(m.web_support_failed()),
 	});
 	const restock = useMutation({
-		mutationFn: restockSupplyFn,
+		mutationFn: ({
+			data,
+			sku,
+		}: {
+			data: Parameters<typeof restockSupplyFn>[0]["data"];
+			sku: string | null;
+		}) => {
+			setRestockProgress(null);
+			return restockInBatches(data, sku, restockSupplyFn, setRestockProgress);
+		},
+		retry: false,
 		onSuccess: async (result) => {
 			await client.invalidateQueries({ queryKey: consoleKey });
 			if (result.generationFailed)
@@ -79,7 +96,14 @@ export function SupplyConsolePage() {
 					}),
 				);
 		},
-		onError: () => toast.error(m.web_support_failed()),
+		onError: async (error) => {
+			await client.invalidateQueries({ queryKey: consoleKey });
+			toast.error(
+				error instanceof RestockBatchError
+					? m.supply_console_restock_stopped(error.progress)
+					: m.web_support_failed(),
+			);
+		},
 	});
 	const rows = supply.data ?? [];
 
@@ -128,6 +152,11 @@ export function SupplyConsolePage() {
 					</>
 				}
 			/>
+			{restockProgress ? (
+				<output className="text-sm text-muted-foreground">
+					{m.supply_console_restock_progress(restockProgress)}
+				</output>
+			) : null}
 			<Card>
 				<CardContent
 					className="overflow-x-auto p-0"
@@ -164,6 +193,18 @@ export function SupplyConsolePage() {
 						<SupplyRow
 							key={row.componentId}
 							row={row}
+							restocking={restock.isPending}
+							progress={
+								restock.variables?.data.componentId === row.componentId
+									? restockProgress
+									: null
+							}
+							failure={
+								restock.variables?.data.componentId === row.componentId &&
+								restock.error instanceof RestockBatchError
+									? m.supply_console_restock_stopped(restock.error.progress)
+									: null
+							}
 							expanded={expanded === row.componentId}
 							onToggle={() =>
 								setExpanded(
@@ -182,6 +223,7 @@ export function SupplyConsolePage() {
 							}
 							onRestock={(values) =>
 								restock.mutateAsync({
+									sku: row.centralSku,
 									data: {
 										requestRef: `supply_${crypto.randomUUID()}`,
 										componentId: row.componentId,
@@ -201,12 +243,18 @@ export function SupplyConsolePage() {
 
 function SupplyRow({
 	row,
+	restocking,
+	progress,
+	failure,
 	expanded,
 	onToggle,
 	onGenerate,
 	onRestock,
 }: {
 	row: Row;
+	restocking: boolean;
+	progress: RestockProgress | null;
+	failure: string | null;
 	expanded: boolean;
 	onToggle: () => void;
 	onGenerate: (count: number) => Promise<unknown>;
@@ -260,7 +308,7 @@ function SupplyRow({
 								})
 					}
 					trigger={
-						<ProButton size="sm" disabled={row.mode !== "local"}>
+						<ProButton size="sm" disabled={restocking || row.mode !== "local"}>
 							<Zap />
 							{m.supply_console_restock()}
 						</ProButton>
@@ -305,8 +353,18 @@ function SupplyRow({
 							usageUrl: values.usageUrl ? String(values.usageUrl) : undefined,
 						});
 					}}
-					onFinishFailed={() => toast.error(m.web_support_failed())}
-				/>
+				>
+					{progress && restocking ? (
+						<output className="text-sm text-muted-foreground">
+							{m.supply_console_restock_progress(progress)}
+						</output>
+					) : null}
+					{failure ? (
+						<p role="alert" className="text-sm text-destructive">
+							{failure}
+						</p>
+					) : null}
+				</ModalForm>
 			</div>
 			{expanded ? (
 				<div className="grid gap-2 bg-muted/20 px-10 py-3 text-xs sm:grid-cols-2">
