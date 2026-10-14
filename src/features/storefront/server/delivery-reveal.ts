@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { consumeEntitlementAccess } from "#/features/entitlements/server/ledger";
 import { decryptDeliveryContent } from "#/features/fulfillment/secrets";
+import {
+	redeemUrlForOrder,
+	withRedeemHost,
+} from "#/features/redeem-warehouse/redeem-host";
 import { getStoreOrder } from "#/features/storefront/server/order-query";
 import { resolveSupplierUsageUrl } from "#/features/suppliers/customer-usage";
 import { DomainError } from "#/lib/domain-error";
@@ -85,12 +89,16 @@ export async function revealStoreDelivery(
 			503,
 			"Delivery configuration unavailable",
 		);
-	const content = await decryptDeliveryContent(
-		delivery.content_encrypted,
-		runtime.commerceSecret,
+	const redeemUrl = await redeemUrlForOrder(db, order.id);
+	const content = withRedeemHost(
+		await decryptDeliveryContent(
+			delivery.content_encrypted,
+			runtime.commerceSecret,
+		),
+		redeemUrl,
 	);
 	const usageUrl = delivery.redeem_sku
-		? "https://redeem.lsrai.shop"
+		? redeemUrl
 		: delivery.has_converted_stock
 			? null
 			: resolveSupplierUsageUrl(

@@ -20,7 +20,7 @@ Only explicit `supplier_export_listings.enabled = 1` entries are exported. Test 
 
 1. The owner opens **86 Redemption Inventory** in GMShop admin.
 2. **Quick restock** sends raw upstream keys directly from the authenticated server function to the redemption Worker. Responses contain counts only.
-3. **Generate sellable codes** requests an idempotent code batch from the redemption Worker and inserts encrypted `CDK + https://redeem.lsrai.shop` delivery entries into the chosen existing GMShop SKU.
+3. **Generate sellable codes** requests an idempotent code batch from the redemption Worker and inserts encrypted `CDK + redemption URL` delivery entries into the chosen existing GMShop SKU. The stored host does not matter: storefront orders are shown `https://redeem.laoshirenvip.com` and supplier-API (reseller) orders `https://redeem.lsrai.shop`, decided per order when content is revealed, emailed or returned (`src/features/redeem-warehouse/redeem-host.ts`).
 4. Main-store and Supplier API orders allocate those central stock entries atomically.
 5. The customer redeems the issued code; the redemption Worker leases a matching 86 key only when the customer starts redemption.
 

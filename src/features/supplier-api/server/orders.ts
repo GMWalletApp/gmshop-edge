@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { decryptDeliveryContent } from "#/features/fulfillment/secrets";
 import {
+	RESELLER_REDEEM_URL,
+	withRedeemHost,
+} from "#/features/redeem-warehouse/redeem-host";
+import {
 	prepareSale,
 	reserveSaleStatements,
 } from "#/features/redeem-warehouse/server/sale-capacity";
@@ -269,9 +273,12 @@ export async function getSupplierApiOrder(
 				503,
 				"Supplier API unavailable",
 			);
-		const content = await decryptDeliveryContent(
-			row.content_encrypted,
-			runtime.commerceSecret,
+		const content = withRedeemHost(
+			await decryptDeliveryContent(
+				row.content_encrypted,
+				runtime.commerceSecret,
+			),
+			RESELLER_REDEEM_URL,
 		);
 		await db
 			.prepare(

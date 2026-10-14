@@ -922,7 +922,14 @@ describe("supplier fulfillment", { timeout: 30_000 }, () => {
 				deliveryId: target?.delivery_record_id ?? "",
 				email: "buyer@example.com",
 			}),
-		).toEqual({ content: ownedContent, usageUrl: "https://redeem.lsrai.shop" });
+		).toEqual({
+			// A storefront buyer never sees the reseller host stored in the stock entry.
+			content: ownedContent.replaceAll(
+				"https://redeem.lsrai.shop",
+				"https://redeem.laoshirenvip.com",
+			),
+			usageUrl: "https://redeem.laoshirenvip.com",
+		});
 		await db
 			.prepare("UPDATE delivery_records SET redeem_sku=NULL WHERE id=?")
 			.bind(target?.delivery_record_id)
@@ -939,7 +946,12 @@ describe("supplier fulfillment", { timeout: 30_000 }, () => {
 				deliveryId: target?.delivery_record_id ?? "",
 				email: "buyer@example.com",
 			}),
-		).toEqual({ content: ownedContent });
+		).toEqual({
+			content: ownedContent.replaceAll(
+				"https://redeem.lsrai.shop",
+				"https://redeem.laoshirenvip.com",
+			),
+		});
 	});
 
 	it.each([

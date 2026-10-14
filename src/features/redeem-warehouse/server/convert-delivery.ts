@@ -3,6 +3,7 @@ import {
 	formatInventoryDelivery,
 	maskInventorySecret,
 } from "#/features/catalog/server/inventory-secrets";
+import { RESELLER_REDEEM_URL } from "#/features/redeem-warehouse/redeem-host";
 import { DomainError } from "#/lib/domain-error";
 import { decryptSecret, encryptSecret } from "#/lib/secrets";
 import { requestWarehouse } from "./warehouse-client";
@@ -87,7 +88,7 @@ export async function convertReservedStock(
 		);
 	const content = formatInventoryDelivery(
 		response.data.cdkey,
-		"https://redeem.lsrai.shop",
+		RESELLER_REDEEM_URL,
 		true,
 	);
 	const changed = await db

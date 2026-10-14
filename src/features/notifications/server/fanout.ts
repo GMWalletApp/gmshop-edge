@@ -1,4 +1,8 @@
 import { decryptDeliveryContent } from "#/features/fulfillment/secrets";
+import {
+	redeemUrlForOrder,
+	withRedeemHost,
+} from "#/features/redeem-warehouse/redeem-host";
 import { formatMinorAmount } from "#/lib/format";
 import { type SupportedLocale, supportedLocales } from "#/lib/locales";
 import { loadRuntimeConfig } from "#/server/runtime-config";
@@ -142,9 +146,12 @@ export async function fanOutPendingCommerceNotifications(
 				deliveryPolicy.contentEncrypted &&
 				runtime.commerceSecret
 			)
-				deliveryContent = await decryptDeliveryContent(
-					deliveryPolicy.contentEncrypted,
-					runtime.commerceSecret,
+				deliveryContent = withRedeemHost(
+					await decryptDeliveryContent(
+						deliveryPolicy.contentEncrypted,
+						runtime.commerceSecret,
+					),
+					await redeemUrlForOrder(db, order.id),
 				);
 			const rendered = renderNotificationTemplate(template.body, values);
 			await enqueueConfiguredEmailNotification(db, {

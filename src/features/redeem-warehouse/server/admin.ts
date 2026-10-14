@@ -6,6 +6,7 @@ import {
 	formatInventoryDelivery,
 	maskInventorySecret,
 } from "#/features/catalog/server/inventory-secrets";
+import { RESELLER_REDEEM_URL } from "#/features/redeem-warehouse/redeem-host";
 import { sha256Hex } from "#/lib/crypto";
 import { DomainError } from "#/lib/domain-error";
 import { decryptSecret, encryptSecret } from "#/lib/secrets";
@@ -361,7 +362,7 @@ export async function generateRedeemSellableInventory(
 			fingerprint: await fingerprintInventorySecret(code, commerceSecret),
 			mask: maskInventorySecret(code),
 			encrypted: await encryptSecret(
-				formatInventoryDelivery(code, "https://redeem.lsrai.shop", true),
+				formatInventoryDelivery(code, RESELLER_REDEEM_URL, true),
 				commerceSecret,
 				"stock-entry",
 			),
