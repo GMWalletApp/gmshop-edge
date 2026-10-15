@@ -101,8 +101,9 @@ it("upgrades the exact v1.24.0 Bun trigger checksums without replay or accepting
 		const before = raw.sqlite
 			.query("SELECT * FROM users WHERE id='legacy-fixture'")
 			.get();
-		// 0030 reward timing and 0031 initial-password storage are new after v1.24.0.
-		expect((await applyNodeMigrations(raw)).applied).toBe(2);
+		// 0030 reward timing, 0031 initial-password storage and 0032 renewal
+		// reminders are new after v1.24.0.
+		expect((await applyNodeMigrations(raw)).applied).toBe(3);
 		expect(
 			raw.sqlite.query("SELECT * FROM users WHERE id='legacy-fixture'").get(),
 		).toEqual(before);
