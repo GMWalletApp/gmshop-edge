@@ -1137,6 +1137,26 @@ function SellableItemsEditor({
 									value={sellableItem.maximumPerCustomer ?? ""}
 								/>
 							</FormItem>
+							<FormItem
+								label={m.catalog_reminder_cycle_days()}
+								tooltip={m.catalog_reminder_cycle_days_tooltip()}
+							>
+								<Input
+									min={1}
+									onChange={(event) =>
+										updateSellableItem(
+											sellableItems,
+											index,
+											{
+												reminderCycleDays: nullableInt(event.target.value),
+											},
+											onSellableItemsChange,
+										)
+									}
+									type="number"
+									value={sellableItem.reminderCycleDays ?? ""}
+								/>
+							</FormItem>
 							{component ? (
 								<FormItem
 									label={m.catalog_duration_ms()}
@@ -1884,6 +1904,7 @@ function defaultSellableItem(
 		minimumQuantity: 1,
 		maximumQuantity: 1,
 		maximumPerCustomer: null,
+		reminderCycleDays: null,
 		deliveryComponentId,
 		enabled: true,
 		saleDisabled: false,

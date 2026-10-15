@@ -17,8 +17,6 @@ export async function runMaintenance(
 		builds,
 		notifications,
 		outbox,
-		entitlementSevenDayReminders,
-		entitlementOneDayReminders,
 		expiredCarts,
 		expiredCommerceEvents,
 		expiredReplayReceipts,
@@ -41,32 +39,6 @@ export async function runMaintenance(
 			`UPDATE outbox_events SET status = 'pending', next_attempt_at = ?, updated_at = ?
 			 WHERE status = 'processing' AND updated_at <= ?`,
 		).bind(now, now, now - 300_000),
-		env.DB.prepare(
-			`INSERT INTO outbox_events
-			 (id, event_type, aggregate_type, aggregate_id, idempotency_key, payload,
-			  status, attempt_count, created_at, updated_at)
-			 SELECT lower(hex(randomblob(16))), 'entitlement.expiring', 'customer_entitlement',
-			 ce.id, 'entitlement-expiring-7d:' || ce.id, '{}', 'pending', 0, ?, ?
-			 FROM customer_entitlements ce
-			 WHERE ce.status = 'active'
-			 AND ce.expires_at > ? AND ce.expires_at <= ?
-			 AND NOT EXISTS (SELECT 1 FROM outbox_events oe
-			  WHERE oe.idempotency_key = 'entitlement-expiring-7d:' || ce.id)
-			 LIMIT 200`,
-		).bind(now, now, now + 86_400_000, now + 7 * 86_400_000),
-		env.DB.prepare(
-			`INSERT INTO outbox_events
-			 (id, event_type, aggregate_type, aggregate_id, idempotency_key, payload,
-			  status, attempt_count, created_at, updated_at)
-			 SELECT lower(hex(randomblob(16))), 'entitlement.expiring', 'customer_entitlement',
-			 ce.id, 'entitlement-expiring-1d:' || ce.id, '{}', 'pending', 0, ?, ?
-			 FROM customer_entitlements ce
-			 WHERE ce.status = 'active'
-			 AND ce.expires_at > ? AND ce.expires_at <= ?
-			 AND NOT EXISTS (SELECT 1 FROM outbox_events oe
-			  WHERE oe.idempotency_key = 'entitlement-expiring-1d:' || ce.id)
-			 LIMIT 200`,
-		).bind(now, now, now, now + 86_400_000),
 		env.DB.prepare(
 			`DELETE FROM shopping_carts WHERE id IN (
 			 SELECT id FROM shopping_carts WHERE expires_at <= ?
@@ -135,9 +107,6 @@ export async function runMaintenance(
 		buildsExpired: changes(builds),
 		notificationsRecovered: changes(notifications),
 		outboxRecovered: changes(outbox),
-		entitlementRemindersQueued:
-			changes(entitlementSevenDayReminders) +
-			changes(entitlementOneDayReminders),
 		expiredCartsDeleted: changes(expiredCarts),
 		commerceEventsDeleted: changes(expiredCommerceEvents),
 		replayReceiptsDeleted: changes(expiredReplayReceipts),

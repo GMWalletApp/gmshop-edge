@@ -54,6 +54,7 @@ import { Route as AdminAccessIndexRouteImport } from './routes/admin/access/inde
 import { Route as publicOrdersIndexRouteImport } from './routes/(public)/orders/index'
 import { Route as publicCheckoutIndexRouteImport } from './routes/(public)/checkout/index'
 import { Route as publicAccountIndexRouteImport } from './routes/(public)/account/index'
+import { Route as RRenewTokenRouteImport } from './routes/r/renew/$token'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api/telegram/webhook'
 import { Route as ApiShopInvoiceOrderRouteImport } from './routes/api/shop/invoice-order'
 import { Route as ApiOpsRestockRouteImport } from './routes/api/ops/restock'
@@ -80,11 +81,13 @@ import { Route as AdminOperationsScheduledRouteImport } from './routes/admin/ope
 import { Route as AdminOperationsQueuesRouteImport } from './routes/admin/operations/queues'
 import { Route as AdminOperationsAuditLogsRouteImport } from './routes/admin/operations/audit-logs'
 import { Route as AdminEmailTemplatesRouteImport } from './routes/admin/email/templates'
+import { Route as AdminEmailRenewalRouteImport } from './routes/admin/email/renewal'
 import { Route as AdminEmailRecordsRouteImport } from './routes/admin/email/records'
 import { Route as AdminAccessUsersRouteImport } from './routes/admin/access/users'
 import { Route as AdminAccessRolesRouteImport } from './routes/admin/access/roles'
 import { Route as AdminAccessPermissionBitsRouteImport } from './routes/admin/access/permission-bits'
 import { Route as AdminAccessModulesRouteImport } from './routes/admin/access/modules'
+import { Route as publicUnsubscribeRenewalRouteImport } from './routes/(public)/unsubscribe/renewal'
 import { Route as publicProductsProductIdRouteImport } from './routes/(public)/products/$productId'
 import { Route as publicOrdersOrderNumberRouteImport } from './routes/(public)/orders/$orderNumber'
 import { Route as publicGuidesClaudeNetworkCheckRouteImport } from './routes/(public)/guides/claude-network-check'
@@ -105,6 +108,7 @@ import { Route as ApiSupportWebMessagesRouteImport } from './routes/api/support/
 import { Route as ApiSupportWebCurrentRouteImport } from './routes/api/support/web/current'
 import { Route as ApiSupportWebConversationsRouteImport } from './routes/api/support/web/conversations'
 import { Route as ApiSupportWebCloseRouteImport } from './routes/api/support/web/close'
+import { Route as ApiShopRenewalUnsubscribeRouteImport } from './routes/api/shop/renewal/unsubscribe'
 import { Route as ApiShopAutomationCallbackRouteImport } from './routes/api/shop/automation/callback'
 import { Route as ApiOpsRestockReconcileRouteImport } from './routes/api/ops/restock/reconcile'
 import { Route as ApiConfigurationLogoScopeIdRouteImport } from './routes/api/configuration-logo/$scope/$id'
@@ -349,6 +353,11 @@ const publicAccountIndexRoute = publicAccountIndexRouteImport.update({
   path: '/',
   getParentRoute: () => publicAccountRouteRoute,
 } as any)
+const RRenewTokenRoute = RRenewTokenRouteImport.update({
+  id: '/r/renew/$token',
+  path: '/r/renew/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiTelegramWebhookRoute = ApiTelegramWebhookRouteImport.update({
   id: '/api/telegram/webhook',
   path: '/api/telegram/webhook',
@@ -483,6 +492,11 @@ const AdminEmailTemplatesRoute = AdminEmailTemplatesRouteImport.update({
   path: '/templates',
   getParentRoute: () => AdminEmailRouteRoute,
 } as any)
+const AdminEmailRenewalRoute = AdminEmailRenewalRouteImport.update({
+  id: '/renewal',
+  path: '/renewal',
+  getParentRoute: () => AdminEmailRouteRoute,
+} as any)
 const AdminEmailRecordsRoute = AdminEmailRecordsRouteImport.update({
   id: '/records',
   path: '/records',
@@ -509,6 +523,12 @@ const AdminAccessModulesRoute = AdminAccessModulesRouteImport.update({
   path: '/modules',
   getParentRoute: () => AdminAccessRouteRoute,
 } as any)
+const publicUnsubscribeRenewalRoute =
+  publicUnsubscribeRenewalRouteImport.update({
+    id: '/unsubscribe/renewal',
+    path: '/unsubscribe/renewal',
+    getParentRoute: () => publicRouteRoute,
+  } as any)
 const publicProductsProductIdRoute = publicProductsProductIdRouteImport.update({
   id: '/products/$productId',
   path: '/products/$productId',
@@ -617,6 +637,12 @@ const ApiSupportWebCloseRoute = ApiSupportWebCloseRouteImport.update({
   path: '/api/support/web/close',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiShopRenewalUnsubscribeRoute =
+  ApiShopRenewalUnsubscribeRouteImport.update({
+    id: '/api/shop/renewal/unsubscribe',
+    path: '/api/shop/renewal/unsubscribe',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiShopAutomationCallbackRoute =
   ApiShopAutomationCallbackRouteImport.update({
     id: '/api/shop/automation/callback',
@@ -776,11 +802,13 @@ export interface FileRoutesByFullPath {
   '/guides/claude-network-check': typeof publicGuidesClaudeNetworkCheckRoute
   '/orders/$orderNumber': typeof publicOrdersOrderNumberRoute
   '/products/$productId': typeof publicProductsProductIdRoute
+  '/unsubscribe/renewal': typeof publicUnsubscribeRenewalRoute
   '/admin/access/modules': typeof AdminAccessModulesRoute
   '/admin/access/permission-bits': typeof AdminAccessPermissionBitsRoute
   '/admin/access/roles': typeof AdminAccessRolesRoute
   '/admin/access/users': typeof AdminAccessUsersRoute
   '/admin/email/records': typeof AdminEmailRecordsRoute
+  '/admin/email/renewal': typeof AdminEmailRenewalRoute
   '/admin/email/templates': typeof AdminEmailTemplatesRoute
   '/admin/operations/audit-logs': typeof AdminOperationsAuditLogsRoute
   '/admin/operations/queues': typeof AdminOperationsQueuesRoute
@@ -807,6 +835,7 @@ export interface FileRoutesByFullPath {
   '/api/ops/restock': typeof ApiOpsRestockRouteWithChildren
   '/api/shop/invoice-order': typeof ApiShopInvoiceOrderRoute
   '/api/telegram/webhook': typeof ApiTelegramWebhookRoute
+  '/r/renew/$token': typeof RRenewTokenRoute
   '/account/': typeof publicAccountIndexRoute
   '/checkout/': typeof publicCheckoutIndexRoute
   '/orders/': typeof publicOrdersIndexRoute
@@ -821,6 +850,7 @@ export interface FileRoutesByFullPath {
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
   '/api/ops/restock/reconcile': typeof ApiOpsRestockReconcileRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
+  '/api/shop/renewal/unsubscribe': typeof ApiShopRenewalUnsubscribeRoute
   '/api/support/web/close': typeof ApiSupportWebCloseRoute
   '/api/support/web/conversations': typeof ApiSupportWebConversationsRoute
   '/api/support/web/current': typeof ApiSupportWebCurrentRoute
@@ -882,11 +912,13 @@ export interface FileRoutesByTo {
   '/guides/claude-network-check': typeof publicGuidesClaudeNetworkCheckRoute
   '/orders/$orderNumber': typeof publicOrdersOrderNumberRoute
   '/products/$productId': typeof publicProductsProductIdRoute
+  '/unsubscribe/renewal': typeof publicUnsubscribeRenewalRoute
   '/admin/access/modules': typeof AdminAccessModulesRoute
   '/admin/access/permission-bits': typeof AdminAccessPermissionBitsRoute
   '/admin/access/roles': typeof AdminAccessRolesRoute
   '/admin/access/users': typeof AdminAccessUsersRoute
   '/admin/email/records': typeof AdminEmailRecordsRoute
+  '/admin/email/renewal': typeof AdminEmailRenewalRoute
   '/admin/email/templates': typeof AdminEmailTemplatesRoute
   '/admin/operations/audit-logs': typeof AdminOperationsAuditLogsRoute
   '/admin/operations/queues': typeof AdminOperationsQueuesRoute
@@ -913,6 +945,7 @@ export interface FileRoutesByTo {
   '/api/ops/restock': typeof ApiOpsRestockRouteWithChildren
   '/api/shop/invoice-order': typeof ApiShopInvoiceOrderRoute
   '/api/telegram/webhook': typeof ApiTelegramWebhookRoute
+  '/r/renew/$token': typeof RRenewTokenRoute
   '/account': typeof publicAccountIndexRoute
   '/checkout': typeof publicCheckoutIndexRoute
   '/orders': typeof publicOrdersIndexRoute
@@ -927,6 +960,7 @@ export interface FileRoutesByTo {
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
   '/api/ops/restock/reconcile': typeof ApiOpsRestockReconcileRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
+  '/api/shop/renewal/unsubscribe': typeof ApiShopRenewalUnsubscribeRoute
   '/api/support/web/close': typeof ApiSupportWebCloseRoute
   '/api/support/web/conversations': typeof ApiSupportWebConversationsRoute
   '/api/support/web/current': typeof ApiSupportWebCurrentRoute
@@ -1000,11 +1034,13 @@ export interface FileRoutesById {
   '/(public)/guides/claude-network-check': typeof publicGuidesClaudeNetworkCheckRoute
   '/(public)/orders/$orderNumber': typeof publicOrdersOrderNumberRoute
   '/(public)/products/$productId': typeof publicProductsProductIdRoute
+  '/(public)/unsubscribe/renewal': typeof publicUnsubscribeRenewalRoute
   '/admin/access/modules': typeof AdminAccessModulesRoute
   '/admin/access/permission-bits': typeof AdminAccessPermissionBitsRoute
   '/admin/access/roles': typeof AdminAccessRolesRoute
   '/admin/access/users': typeof AdminAccessUsersRoute
   '/admin/email/records': typeof AdminEmailRecordsRoute
+  '/admin/email/renewal': typeof AdminEmailRenewalRoute
   '/admin/email/templates': typeof AdminEmailTemplatesRoute
   '/admin/operations/audit-logs': typeof AdminOperationsAuditLogsRoute
   '/admin/operations/queues': typeof AdminOperationsQueuesRoute
@@ -1031,6 +1067,7 @@ export interface FileRoutesById {
   '/api/ops/restock': typeof ApiOpsRestockRouteWithChildren
   '/api/shop/invoice-order': typeof ApiShopInvoiceOrderRoute
   '/api/telegram/webhook': typeof ApiTelegramWebhookRoute
+  '/r/renew/$token': typeof RRenewTokenRoute
   '/(public)/account/': typeof publicAccountIndexRoute
   '/(public)/checkout/': typeof publicCheckoutIndexRoute
   '/(public)/orders/': typeof publicOrdersIndexRoute
@@ -1045,6 +1082,7 @@ export interface FileRoutesById {
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
   '/api/ops/restock/reconcile': typeof ApiOpsRestockReconcileRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
+  '/api/shop/renewal/unsubscribe': typeof ApiShopRenewalUnsubscribeRoute
   '/api/support/web/close': typeof ApiSupportWebCloseRoute
   '/api/support/web/conversations': typeof ApiSupportWebConversationsRoute
   '/api/support/web/current': typeof ApiSupportWebCurrentRoute
@@ -1117,11 +1155,13 @@ export interface FileRouteTypes {
     | '/guides/claude-network-check'
     | '/orders/$orderNumber'
     | '/products/$productId'
+    | '/unsubscribe/renewal'
     | '/admin/access/modules'
     | '/admin/access/permission-bits'
     | '/admin/access/roles'
     | '/admin/access/users'
     | '/admin/email/records'
+    | '/admin/email/renewal'
     | '/admin/email/templates'
     | '/admin/operations/audit-logs'
     | '/admin/operations/queues'
@@ -1148,6 +1188,7 @@ export interface FileRouteTypes {
     | '/api/ops/restock'
     | '/api/shop/invoice-order'
     | '/api/telegram/webhook'
+    | '/r/renew/$token'
     | '/account/'
     | '/checkout/'
     | '/orders/'
@@ -1162,6 +1203,7 @@ export interface FileRouteTypes {
     | '/api/configuration-logo/$scope/$id'
     | '/api/ops/restock/reconcile'
     | '/api/shop/automation/callback'
+    | '/api/shop/renewal/unsubscribe'
     | '/api/support/web/close'
     | '/api/support/web/conversations'
     | '/api/support/web/current'
@@ -1223,11 +1265,13 @@ export interface FileRouteTypes {
     | '/guides/claude-network-check'
     | '/orders/$orderNumber'
     | '/products/$productId'
+    | '/unsubscribe/renewal'
     | '/admin/access/modules'
     | '/admin/access/permission-bits'
     | '/admin/access/roles'
     | '/admin/access/users'
     | '/admin/email/records'
+    | '/admin/email/renewal'
     | '/admin/email/templates'
     | '/admin/operations/audit-logs'
     | '/admin/operations/queues'
@@ -1254,6 +1298,7 @@ export interface FileRouteTypes {
     | '/api/ops/restock'
     | '/api/shop/invoice-order'
     | '/api/telegram/webhook'
+    | '/r/renew/$token'
     | '/account'
     | '/checkout'
     | '/orders'
@@ -1268,6 +1313,7 @@ export interface FileRouteTypes {
     | '/api/configuration-logo/$scope/$id'
     | '/api/ops/restock/reconcile'
     | '/api/shop/automation/callback'
+    | '/api/shop/renewal/unsubscribe'
     | '/api/support/web/close'
     | '/api/support/web/conversations'
     | '/api/support/web/current'
@@ -1340,11 +1386,13 @@ export interface FileRouteTypes {
     | '/(public)/guides/claude-network-check'
     | '/(public)/orders/$orderNumber'
     | '/(public)/products/$productId'
+    | '/(public)/unsubscribe/renewal'
     | '/admin/access/modules'
     | '/admin/access/permission-bits'
     | '/admin/access/roles'
     | '/admin/access/users'
     | '/admin/email/records'
+    | '/admin/email/renewal'
     | '/admin/email/templates'
     | '/admin/operations/audit-logs'
     | '/admin/operations/queues'
@@ -1371,6 +1419,7 @@ export interface FileRouteTypes {
     | '/api/ops/restock'
     | '/api/shop/invoice-order'
     | '/api/telegram/webhook'
+    | '/r/renew/$token'
     | '/(public)/account/'
     | '/(public)/checkout/'
     | '/(public)/orders/'
@@ -1385,6 +1434,7 @@ export interface FileRouteTypes {
     | '/api/configuration-logo/$scope/$id'
     | '/api/ops/restock/reconcile'
     | '/api/shop/automation/callback'
+    | '/api/shop/renewal/unsubscribe'
     | '/api/support/web/close'
     | '/api/support/web/conversations'
     | '/api/support/web/current'
@@ -1429,8 +1479,10 @@ export interface RootRouteChildren {
   ApiOpsRestockRoute: typeof ApiOpsRestockRouteWithChildren
   ApiShopInvoiceOrderRoute: typeof ApiShopInvoiceOrderRoute
   ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
+  RRenewTokenRoute: typeof RRenewTokenRoute
   ApiConfigurationLogoScopeIdRoute: typeof ApiConfigurationLogoScopeIdRoute
   ApiShopAutomationCallbackRoute: typeof ApiShopAutomationCallbackRoute
+  ApiShopRenewalUnsubscribeRoute: typeof ApiShopRenewalUnsubscribeRoute
   ApiSupportWebCloseRoute: typeof ApiSupportWebCloseRoute
   ApiSupportWebConversationsRoute: typeof ApiSupportWebConversationsRoute
   ApiSupportWebCurrentRoute: typeof ApiSupportWebCurrentRoute
@@ -1767,6 +1819,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof publicAccountIndexRouteImport
       parentRoute: typeof publicAccountRouteRoute
     }
+    '/r/renew/$token': {
+      id: '/r/renew/$token'
+      path: '/r/renew/$token'
+      fullPath: '/r/renew/$token'
+      preLoaderRoute: typeof RRenewTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/telegram/webhook': {
       id: '/api/telegram/webhook'
       path: '/api/telegram/webhook'
@@ -1949,6 +2008,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEmailTemplatesRouteImport
       parentRoute: typeof AdminEmailRouteRoute
     }
+    '/admin/email/renewal': {
+      id: '/admin/email/renewal'
+      path: '/renewal'
+      fullPath: '/admin/email/renewal'
+      preLoaderRoute: typeof AdminEmailRenewalRouteImport
+      parentRoute: typeof AdminEmailRouteRoute
+    }
     '/admin/email/records': {
       id: '/admin/email/records'
       path: '/records'
@@ -1983,6 +2049,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/access/modules'
       preLoaderRoute: typeof AdminAccessModulesRouteImport
       parentRoute: typeof AdminAccessRouteRoute
+    }
+    '/(public)/unsubscribe/renewal': {
+      id: '/(public)/unsubscribe/renewal'
+      path: '/unsubscribe/renewal'
+      fullPath: '/unsubscribe/renewal'
+      preLoaderRoute: typeof publicUnsubscribeRenewalRouteImport
+      parentRoute: typeof publicRouteRoute
     }
     '/(public)/products/$productId': {
       id: '/(public)/products/$productId'
@@ -2122,6 +2195,13 @@ declare module '@tanstack/react-router' {
       path: '/api/support/web/close'
       fullPath: '/api/support/web/close'
       preLoaderRoute: typeof ApiSupportWebCloseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/shop/renewal/unsubscribe': {
+      id: '/api/shop/renewal/unsubscribe'
+      path: '/api/shop/renewal/unsubscribe'
+      fullPath: '/api/shop/renewal/unsubscribe'
+      preLoaderRoute: typeof ApiShopRenewalUnsubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/shop/automation/callback': {
@@ -2320,6 +2400,7 @@ interface publicRouteRouteChildren {
   publicGuidesClaudeNetworkCheckRoute: typeof publicGuidesClaudeNetworkCheckRoute
   publicOrdersOrderNumberRoute: typeof publicOrdersOrderNumberRoute
   publicProductsProductIdRoute: typeof publicProductsProductIdRoute
+  publicUnsubscribeRenewalRoute: typeof publicUnsubscribeRenewalRoute
   publicCheckoutIndexRoute: typeof publicCheckoutIndexRoute
   publicOrdersIndexRoute: typeof publicOrdersIndexRoute
 }
@@ -2335,6 +2416,7 @@ const publicRouteRouteChildren: publicRouteRouteChildren = {
   publicGuidesClaudeNetworkCheckRoute: publicGuidesClaudeNetworkCheckRoute,
   publicOrdersOrderNumberRoute: publicOrdersOrderNumberRoute,
   publicProductsProductIdRoute: publicProductsProductIdRoute,
+  publicUnsubscribeRenewalRoute: publicUnsubscribeRenewalRoute,
   publicCheckoutIndexRoute: publicCheckoutIndexRoute,
   publicOrdersIndexRoute: publicOrdersIndexRoute,
 }
@@ -2364,12 +2446,14 @@ const AdminAccessRouteRouteWithChildren =
 
 interface AdminEmailRouteRouteChildren {
   AdminEmailRecordsRoute: typeof AdminEmailRecordsRoute
+  AdminEmailRenewalRoute: typeof AdminEmailRenewalRoute
   AdminEmailTemplatesRoute: typeof AdminEmailTemplatesRoute
   AdminEmailIndexRoute: typeof AdminEmailIndexRoute
 }
 
 const AdminEmailRouteRouteChildren: AdminEmailRouteRouteChildren = {
   AdminEmailRecordsRoute: AdminEmailRecordsRoute,
+  AdminEmailRenewalRoute: AdminEmailRenewalRoute,
   AdminEmailTemplatesRoute: AdminEmailTemplatesRoute,
   AdminEmailIndexRoute: AdminEmailIndexRoute,
 }
@@ -2577,8 +2661,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOpsRestockRoute: ApiOpsRestockRouteWithChildren,
   ApiShopInvoiceOrderRoute: ApiShopInvoiceOrderRoute,
   ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
+  RRenewTokenRoute: RRenewTokenRoute,
   ApiConfigurationLogoScopeIdRoute: ApiConfigurationLogoScopeIdRoute,
   ApiShopAutomationCallbackRoute: ApiShopAutomationCallbackRoute,
+  ApiShopRenewalUnsubscribeRoute: ApiShopRenewalUnsubscribeRoute,
   ApiSupportWebCloseRoute: ApiSupportWebCloseRoute,
   ApiSupportWebConversationsRoute: ApiSupportWebConversationsRoute,
   ApiSupportWebCurrentRoute: ApiSupportWebCurrentRoute,

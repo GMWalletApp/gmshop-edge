@@ -1,5 +1,6 @@
 import {
 	Activity,
+	CalendarClock,
 	CircleDollarSign,
 	CreditCard,
 	Download,
@@ -314,6 +315,13 @@ export const navigationGroups: readonly NavigationGroup[] = [
 						() => m.notifications_deliveries(),
 						"/admin/email/records",
 						ScrollText,
+						systemPermission("notifications", "read"),
+					),
+					entry(
+						"email-renewal",
+						() => m.renewal_nav(),
+						"/admin/email/renewal",
+						CalendarClock,
 						systemPermission("notifications", "read"),
 					),
 				],

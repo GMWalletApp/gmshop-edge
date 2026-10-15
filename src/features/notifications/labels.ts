@@ -13,6 +13,9 @@ export function notificationEventLabel(event: string) {
 		refund_failed: m.store_account_notification_refund_failed,
 		after_sale_updated: m.store_account_notification_after_sale_updated,
 		entitlement_expiring: m.store_account_notification_entitlement_expiring,
+		renewal_remind_3d: m.notifications_event_renewal_remind_3d,
+		renewal_remind_due: m.notifications_event_renewal_remind_due,
+		renewal_recall: m.notifications_event_renewal_recall,
 	};
 	return labels[event]?.() ?? m.status_unknown();
 }

@@ -65,6 +65,13 @@ export const productSellableItemsInputSchema = z
 					delivery: deliveryPolicySchema,
 					enabled: z.boolean(),
 					saleDisabled: z.boolean().default(false),
+					reminderCycleDays: z
+						.number()
+						.int()
+						.min(1)
+						.max(3650)
+						.nullable()
+						.optional(),
 				}),
 			)
 			.min(1)

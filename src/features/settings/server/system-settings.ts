@@ -64,6 +64,8 @@ const definitions = {
 	"commerce.currency_decimals": z.number().int().min(0).max(8),
 	"commerce.currency_symbol": z.string().trim().min(1).max(12),
 	"commerce.supplier_api_enabled": z.boolean(),
+	"notifications.renewal_reminders_enabled": z.boolean(),
+	"notifications.renewal_recall_enabled": z.boolean(),
 } as const;
 
 export type SettingKey = keyof typeof definitions;
@@ -98,6 +100,8 @@ const defaults: Record<SettingKey, SettingValue> = {
 	"commerce.currency_decimals": 2,
 	"commerce.currency_symbol": "$",
 	"commerce.supplier_api_enabled": false,
+	"notifications.renewal_reminders_enabled": true,
+	"notifications.renewal_recall_enabled": false,
 };
 
 export async function listSystemSettings(db: D1Database) {

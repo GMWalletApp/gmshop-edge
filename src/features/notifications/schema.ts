@@ -8,6 +8,13 @@ export const emailMessageSchema = z.object({
 	subject: z.string().trim().min(1).max(500),
 	text: z.string().min(1).max(100_000),
 	html: z.string().max(200_000).default(""),
+	// Only list-unsubscribe headers are allowed; older stored messages omit it.
+	headers: z
+		.partialRecord(
+			z.enum(["List-Unsubscribe", "List-Unsubscribe-Post"]),
+			z.string().trim().min(1).max(2_000),
+		)
+		.optional(),
 });
 
 export const emailChannelConfigSchema = z

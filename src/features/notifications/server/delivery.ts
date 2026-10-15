@@ -39,6 +39,7 @@ export async function enqueueConfiguredEmailNotification(
 		text: string;
 		locale?: SupportedLocale;
 		html?: string;
+		headers?: EmailMessage["headers"];
 		asset?: NotificationAsset;
 	},
 ) {
@@ -64,6 +65,7 @@ export async function enqueueConfiguredEmailNotification(
 			subject: input.subject,
 			text: input.text,
 			html: input.html ?? "",
+			...(input.headers ? { headers: input.headers } : {}),
 		},
 		locale: input.locale ?? "en-US",
 		asset: input.asset,

@@ -3,6 +3,7 @@ import {
 	check,
 	index,
 	integer,
+	primaryKey,
 	sqliteTable,
 	text,
 	uniqueIndex,
@@ -198,6 +199,8 @@ export const productSellableItems = sqliteTable(
 		saleDisabled: integer("sale_disabled", { mode: "boolean" })
 			.notNull()
 			.default(false),
+		// Billing cycle that opts the item into renewal reminders; NULL = no reminders.
+		reminderCycleDays: integer("reminder_cycle_days"),
 		...timestamps,
 	},
 	(table) => [
@@ -2487,4 +2490,123 @@ export const redeemExceptionTodos = sqliteTable(
 			sql`${table.alertAttempted} IN (0,1)`,
 		),
 	],
+);
+
+// One row per delivered card code (or per delivery without a recognizable
+// code). anchor_at is the redemption time, or the delivery time as fallback.
+export const renewalReminders = sqliteTable(
+	"renewal_reminders",
+	{
+		id: text("id").primaryKey(),
+		sourceKey: text("source_key").notNull(),
+		orderId: text("order_id")
+			.notNull()
+			.references(() => shopOrders.id),
+		orderItemId: text("order_item_id")
+			.notNull()
+			.references(() => shopOrderItems.id),
+		deliveryRecordId: text("delivery_record_id")
+			.notNull()
+			.references(() => deliveryRecords.id),
+		codeHash: text("code_hash"),
+		userId: text("user_id"),
+		contactEmail: text("contact_email"),
+		accountEmail: text("account_email"),
+		productId: text("product_id").notNull(),
+		sellableItemId: text("sellable_item_id").notNull(),
+		itemName: text("item_name").notNull(),
+		locale: text("locale", { enum: ["en-US", "zh-CN"] }).notNull(),
+		cycleDays: integer("cycle_days").notNull(),
+		orderPaidAt: integer("order_paid_at").notNull(),
+		deliveredAt: integer("delivered_at").notNull(),
+		anchorAt: integer("anchor_at"),
+		anchorSource: text("anchor_source", { enum: ["redeem", "delivery"] }),
+		status: text("status", {
+			enum: ["awaiting_redeem", "scheduled", "abandoned", "cancelled"],
+		}).notNull(),
+		statusReason: text("status_reason"),
+		lookupAttempts: integer("lookup_attempts").notNull().default(0),
+		nextLookupAt: integer("next_lookup_at"),
+		createdAt: integer("created_at").notNull(),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [
+		uniqueIndex("renewal_reminders_source_uidx").on(table.sourceKey),
+		index("renewal_reminders_delivery_idx").on(table.deliveryRecordId),
+		index("renewal_reminders_status_lookup_idx").on(
+			table.status,
+			table.nextLookupAt,
+			table.id,
+		),
+		index("renewal_reminders_order_idx").on(table.orderId),
+	],
+);
+
+export const renewalReminderSends = sqliteTable(
+	"renewal_reminder_sends",
+	{
+		id: text("id").primaryKey(),
+		reminderId: text("reminder_id")
+			.notNull()
+			.references(() => renewalReminders.id, { onDelete: "cascade" }),
+		stage: text("stage", {
+			enum: ["remind_3d", "remind_due", "recall"],
+		}).notNull(),
+		recipientEmail: text("recipient_email").notNull(),
+		recipientHash: text("recipient_hash").notNull(),
+		recipientKind: text("recipient_kind", {
+			enum: ["order", "account"],
+		}).notNull(),
+		dueAt: integer("due_at").notNull(),
+		status: text("status", {
+			enum: [
+				"pending",
+				"sending",
+				"sent",
+				"merged",
+				"skipped",
+				"cancelled",
+				"suppressed",
+				"unsubscribed",
+				"failed",
+			],
+		}).notNull(),
+		statusReason: text("status_reason"),
+		clickToken: text("click_token"),
+		notificationDeliveryId: text("notification_delivery_id"),
+		sentAt: integer("sent_at"),
+		clickCount: integer("click_count").notNull().default(0),
+		firstClickedAt: integer("first_clicked_at"),
+		lastClickedAt: integer("last_clicked_at"),
+		createdAt: integer("created_at").notNull(),
+		updatedAt: integer("updated_at").notNull(),
+	},
+	(table) => [
+		uniqueIndex("renewal_reminder_sends_stage_uidx").on(
+			table.reminderId,
+			table.stage,
+			table.recipientHash,
+		),
+		uniqueIndex("renewal_reminder_sends_token_uidx").on(table.clickToken),
+		index("renewal_reminder_sends_due_idx").on(
+			table.status,
+			table.dueAt,
+			table.id,
+		),
+		index("renewal_reminder_sends_recipient_idx").on(
+			table.recipientHash,
+			table.sentAt,
+		),
+		index("renewal_reminder_sends_stage_idx").on(table.stage, table.status),
+	],
+);
+
+export const emailUnsubscribes = sqliteTable(
+	"email_unsubscribes",
+	{
+		recipientHash: text("recipient_hash").notNull(),
+		scope: text("scope", { enum: ["renewal"] }).notNull(),
+		createdAt: integer("created_at").notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.recipientHash, table.scope] })],
 );

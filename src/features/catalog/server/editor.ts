@@ -239,6 +239,10 @@ export const getProductEditorFn = createServerFn({ method: "GET" })
 					sellableItem.maximum_per_customer == null
 						? null
 						: Number(sellableItem.maximum_per_customer),
+				reminderCycleDays:
+					sellableItem.reminder_cycle_days == null
+						? null
+						: Number(sellableItem.reminder_cycle_days),
 				deliveryComponentId: String(sellableItem.id),
 				enabled: Boolean(sellableItem.enabled),
 				saleDisabled: Boolean(sellableItem.sale_disabled),
@@ -416,8 +420,8 @@ export const saveProductSellableItemsFn = createServerFn({ method: "POST" })
 						  low_stock_threshold, version, currency, currency_decimals,
 						  list_price_minor, price_minor, cost_minor, minimum_quantity,
 						  maximum_quantity, maximum_per_customer, sort_order, enabled, sale_disabled,
-						  created_at, updated_at)
-						 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+						  reminder_cycle_days, created_at, updated_at)
+						 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						 ON CONFLICT(id) DO UPDATE SET name = excluded.name,
 						  duration_ms = excluded.duration_ms,
 						  usage_limit = excluded.usage_limit,
@@ -439,6 +443,7 @@ export const saveProductSellableItemsFn = createServerFn({ method: "POST" })
 						  sort_order = excluded.sort_order,
 						  enabled = excluded.enabled,
 						  sale_disabled = excluded.sale_disabled,
+						  reminder_cycle_days = excluded.reminder_cycle_days,
 						  updated_at = excluded.updated_at`,
 					)
 					.bind(
@@ -465,6 +470,11 @@ export const saveProductSellableItemsFn = createServerFn({ method: "POST" })
 						(index + 1) * 100,
 						item.enabled ? 1 : 0,
 						item.saleDisabled ? 1 : 0,
+						item.reminderCycleDays === undefined
+							? current?.reminder_cycle_days == null
+								? null
+								: Number(current.reminder_cycle_days)
+							: item.reminderCycleDays,
 						now,
 						now,
 					),

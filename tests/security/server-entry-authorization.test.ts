@@ -23,6 +23,7 @@ const adminServerModules = [
 	"src/features/operations/server/admin.ts",
 	"src/features/promotions/server/admin.ts",
 	"src/features/redeem-warehouse/server/admin.ts",
+	"src/features/renewals/server/admin.ts",
 	"src/features/settings/server/admin.ts",
 	"src/features/shop-orders/server/admin.ts",
 	"src/features/shop-payments/server/admin.ts",
@@ -42,6 +43,8 @@ const reviewedPublicServerModules = [
 	"src/features/exchange-rates/server/public.ts",
 	"src/features/installation/server/functions.ts",
 	"src/features/promotions/server/functions.ts",
+	// Signed one-click unsubscribe: HMAC over the address, no session.
+	"src/features/renewals/server/public.ts",
 	"src/features/settings/server/site-brand-entry.ts",
 	"src/features/status/server/functions.ts",
 	"src/features/storefront/server/account-functions.ts",

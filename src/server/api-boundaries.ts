@@ -22,6 +22,7 @@ const publicGetPatterns = [
 const publicPostPatterns = [
 	/^\/api\/support\/web\/attachments\/?$/,
 	/^\/api\/shop\/invoice-order$/,
+	/^\/api\/shop\/renewal\/unsubscribe$/,
 	supplierApiPattern,
 	/^\/api\/ops\/restock$/,
 	/^\/api\/ops\/redeem-cutover$/,

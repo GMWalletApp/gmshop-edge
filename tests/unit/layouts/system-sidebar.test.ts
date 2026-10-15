@@ -64,7 +64,12 @@ describe("GMShop admin navigation", () => {
 		[systemPermission("orders", "read"), ["/admin/orders"]],
 		[
 			systemPermission("notifications", "read"),
-			["/admin/email", "/admin/email/templates", "/admin/email/records"],
+			[
+				"/admin/email",
+				"/admin/email/templates",
+				"/admin/email/records",
+				"/admin/email/renewal",
+			],
 		],
 		[
 			systemPermission("operations", "read"),
