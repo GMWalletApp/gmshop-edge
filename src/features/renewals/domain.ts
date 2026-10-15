@@ -211,11 +211,18 @@ export function renderRenewalEmail(input: RenewalEmailInput) {
 		lead,
 		input.renewUrl,
 		"",
-		`记住我们：${input.siteDomain}，建议收藏，下次续费直接来。`,
+		`记住我们：${input.siteDomain}${pinyinHint(input.siteDomain)}，建议收藏，下次续费直接来。`,
 		"",
 		`—— ${input.brand}`,
 		"",
 		`不想再收到续费提醒？退订：${input.unsubscribeUrl}`,
 	].join("\n");
 	return { subject, text };
+}
+
+/** The domain is the pinyin of the brand; saying so makes it easier to remember. */
+function pinyinHint(siteDomain: string) {
+	return siteDomain.replace(/^www\./, "").startsWith("laoshirenvip.")
+		? "（就是「老实人VIP」的拼音）"
+		: "";
 }

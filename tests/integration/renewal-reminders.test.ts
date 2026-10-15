@@ -312,7 +312,9 @@ describe("renewal reminders", { timeout: 120_000 }, () => {
 			"你的 ChatGPT Plus 菲区 1个月 将于 10月1日 到期",
 		);
 		expect(message.text).toContain("https://laoshirenvip.com/r/renew/");
-		expect(message.text).toContain("记住我们：laoshirenvip.com");
+		expect(message.text).toContain(
+			"记住我们：laoshirenvip.com（就是「老实人VIP」的拼音）",
+		);
 		expect(message.text).toContain("/unsubscribe/renewal?e=");
 		expect(message.text).not.toMatch(/优惠|coupon/i);
 		expect(message.headers).toEqual({
