@@ -60,6 +60,13 @@ import { getLocale } from "#/paraglide/runtime";
 type Product = Awaited<ReturnType<typeof getStorefrontProductFn>>;
 type SellableItem = Product["sellableItems"][number];
 
+// Delivered content is an account or activation link, not a card plus redeem URL;
+// the product description carries the real instructions.
+const ownUsageGuideProductIds = new Set([
+	"2ee356de-fe69-4641-94c3-1dfea19b6967", // Muse AI 成品号
+	"64812c48-9026-4ef7-874d-b332d2a39b1a", // Gemini Pro 18个月 激活链接
+]);
+
 export function StorefrontProductPage({
 	productId,
 	preferredItemId,
@@ -262,7 +269,9 @@ export function StorefrontProductPage({
 							))}
 						</div>
 					) : null}
-					{selectedItem && data.productType === "stock" ? (
+					{selectedItem &&
+					data.productType === "stock" &&
+					!ownUsageGuideProductIds.has(data.id) ? (
 						<UsageGuide
 							isChatGpt={data.id === chatGptRechargeProductId}
 							sellableItem={selectedItem}
