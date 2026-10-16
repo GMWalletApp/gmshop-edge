@@ -46,6 +46,8 @@ type SaleAlertRow = {
 	internal_supply_count: number;
 	downstream_order_no: string | null;
 	downstream_site_host?: string | null;
+	downstream_parent_order_no?: string | null;
+	downstream_buyer_email?: string | null;
 	event_created_at: number;
 	// Owned redemption codes whose real upstream cost the warehouse has not reported yet.
 	owned_cost_pending_count: number;
@@ -188,6 +190,10 @@ export async function publishPendingOwnerSaleAlerts(input: {
 			         WHERE internal_order.shop_order_id = orders.id LIMIT 1) AS downstream_order_no,
 			        (SELECT internal_order.downstream_site_host FROM supplier_api_orders internal_order
 			         WHERE internal_order.shop_order_id = orders.id LIMIT 1) AS downstream_site_host,
+			        (SELECT internal_order.downstream_parent_order_no FROM supplier_api_orders internal_order
+			         WHERE internal_order.shop_order_id = orders.id LIMIT 1) AS downstream_parent_order_no,
+			        (SELECT internal_order.downstream_buyer_email FROM supplier_api_orders internal_order
+			         WHERE internal_order.shop_order_id = orders.id LIMIT 1) AS downstream_buyer_email,
 			        event.created_at AS event_created_at,
 			        (SELECT COUNT(*) FROM stock_entries owned
 			         JOIN shop_order_items owned_item ON owned_item.id = owned.order_item_id
@@ -351,7 +357,7 @@ export function formatFeishuOwnerSaleAlert(
 		netRevenueMinor = paymentMinor - feeMinor;
 	}
 	const payment = walletPaid
-		? `用户钱包，余额 ${money(row.wallet_balance_after_minor ?? "0", row)}`
+		? `${row.internal_supply_count > 0 ? "lsrai.shop 钱包扣款" : "用户钱包"}，余额 ${money(row.wallet_balance_after_minor ?? "0", row)}`
 		: `实付 ${money(paidMinor, row)} · ${row.payment_channel ?? "无需支付"} · ${feeText}`;
 	const failedSupply = notes
 		.split("；")
@@ -404,18 +410,43 @@ export function formatFeishuOwnerSaleAlert(
 		row.supplier_fulfilled_count > 0 && balance
 			? `${money(balance.amountMinor, { currency: balance.currency, currency_decimals: balance.currencyDecimals })}${balance.fresh ? "" : "（缓存）"}`
 			: null;
+	// Internal supply comes from lsrai.shop. Its contact email is our own API
+	// account, so the real customer is the buyer lsrai.shop reports. A site host
+	// means the customer ordered on an agent's sub-site, not on lsrai.shop itself.
+	const subSite = internal ? (row.downstream_site_host ?? null) : null;
+	const agentOrderNo =
+		row.downstream_parent_order_no ??
+		row.downstream_order_no?.replace(/^(DJ\d+)-\d+$/, "$1") ??
+		null;
+	const orderLines = internal
+		? [
+				`卡网订单：${row.order_number}`,
+				`${subSite ? "子站订单" : "代理站订单"}：${agentOrderNo ?? "未回传"}`,
+				`下单客户：${row.downstream_buyer_email || "未回传"}`,
+			]
+		: [
+				`订单：${row.order_number}`,
+				`客户邮箱：${row.contact_email || "未填写"}`,
+			];
 	return [
 		internal
-			? `💰 新订单｜代理站 ${row.downstream_site_host ?? "lsrai.shop"}`
+			? subSite
+				? `💰 新订单｜子站 ${subSite}`
+				: "💰 新订单｜代理站 lsrai.shop"
 			: "💰 新订单｜主站",
+		"",
 		`商品：${row.items_summary}`,
-		`${internal ? "代理拿货价" : "售价"}：${money(row.total_minor, row)}（${payment}）`,
+		`${internal ? "代理拿货价" : "售价"}：${money(row.total_minor, row)}`,
+		`支付：${payment}`,
+		"",
 		`货源：${source}`,
-		`成本：${cost}　利润：${profit}${internal ? "（主站这一层）" : ""}`,
+		`成本：${cost}`,
+		`利润：${profit}${internal ? "（主站这一层）" : ""}`,
 		...(delivery ? [delivery] : []),
 		...(purchaseWallet ? [`采购钱包余额：${purchaseWallet}`] : []),
-		`订单：${row.order_number}${row.downstream_order_no ? `（子站订单 ${row.downstream_order_no}）` : ""}`,
-		`邮箱：${row.contact_email || "未填写"}　${time}`,
+		"",
+		...orderLines,
+		`时间：${time}`,
 	].join("\n");
 }
 

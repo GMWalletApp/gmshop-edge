@@ -213,6 +213,18 @@ async function createSupplierOrder(
 					/^[a-z0-9.-]{1,253}$/i.test(body.downstream_site_host)
 						? body.downstream_site_host.toLowerCase()
 						: null,
+				parentOrderNo:
+					typeof body.downstream_parent_order_no === "string" &&
+					/^[A-Za-z0-9_-]{1,64}$/.test(body.downstream_parent_order_no)
+						? body.downstream_parent_order_no
+						: null,
+				buyerEmail:
+					typeof body.downstream_buyer_email === "string" &&
+					/^[^\s@]{1,64}@[^\s@]{1,190}$/.test(
+						body.downstream_buyer_email.trim(),
+					)
+						? body.downstream_buyer_email.trim().toLowerCase()
+						: null,
 			},
 		),
 	);

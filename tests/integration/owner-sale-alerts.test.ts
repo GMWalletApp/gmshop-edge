@@ -44,7 +44,7 @@ describe("owner sale alerts", { timeout: 30_000 }, () => {
 		expect(messages[0]).toContain("💰 新订单｜主站");
 		expect(messages[0]).toContain("商品：ChatGPT会员 · Plus菲区 × 1");
 		expect(messages[0]).toContain("售价：¥119.00");
-		expect(messages[0]).toContain("邮箱：未填写");
+		expect(messages[0]).toContain("客户邮箱：未填写");
 		expect(messages[0]).toContain("货源：人工采购");
 		await expect(
 			publishPendingOwnerSaleAlerts({
@@ -205,7 +205,7 @@ describe("owner sale alerts", { timeout: 30_000 }, () => {
 			},
 		});
 		expect(messages).toHaveLength(1);
-		expect(messages[0]).toContain("邮箱：wallet@example.com");
+		expect(messages[0]).toContain("客户邮箱：wallet@example.com");
 		expect(messages[0]).toContain("用户钱包");
 		expect(messages[0]).toContain("余额 ¥9.99");
 		expect(messages[0]).not.toContain("¥1.11");
@@ -289,7 +289,7 @@ describe("owner sale alerts", { timeout: 30_000 }, () => {
 		expect(messages[0]).toContain(
 			"⚠️ 86 补货失败，请手动补卡（trade_refused: 该商品未开放对接）",
 		);
-		expect(messages[0]).toContain("成本：待确认　利润：待确认");
+		expect(messages[0]).toContain("成本：待确认\n利润：待确认");
 	});
 });
 
@@ -336,7 +336,11 @@ it("formats cached balances explicitly", () => {
 	expect(text).toContain("手续费 ¥1.67 用户承担");
 	expect(text).toContain("货源：内置库存");
 	expect(text).toContain("💰 新订单｜代理站 lsrai.shop");
-	expect(text).toContain("子站订单 DJ-INTERNAL-1");
+	expect(text).toContain("代理站订单：DJ-INTERNAL-1");
+	expect(text).toContain("卡网订单：GMTEST");
+	expect(text).toContain("下单客户：未回传");
+	expect(text).not.toContain("buyer@example.com");
+	expect(text).not.toContain("子站");
 	expect(text).toContain("利润：¥7.00（主站这一层）");
 });
 
@@ -451,3 +455,57 @@ async function seedPendingSupplierOrder(db: D1Database) {
 		),
 	]);
 }
+
+it("names the sub-site, its parent order and the real customer", () => {
+	const base = {
+		order_number: "APITEST",
+		order_status: "paid",
+		currency: "CNY",
+		currency_decimals: 2,
+		total_minor: "11900",
+		contact_email: "api-account@example.com",
+		items_summary: "ChatGPT会员 · Plus × 1",
+		cost_total_minor: "11500",
+		cost_missing_count: 0,
+		local_fulfilled_count: 1,
+		supplier_fulfilled_count: 0,
+		local_stock_remaining_summary: null,
+		supplier_item_count: 0,
+		manual_item_count: 0,
+		supplier_pending_count: 0,
+		supplier_failed_count: 0,
+		payment_channel: null,
+		payment_amount_minor: null,
+		payment_currency: null,
+		payment_currency_decimals: null,
+		payment_fee_bps: null,
+		payment_fixed_fee_minor: null,
+		wallet_balance_after_minor: "50000",
+		internal_supply_count: 1,
+		downstream_order_no: "DJ20261016005006527976-01",
+		owned_cost_pending_count: 0,
+		owned_cost_sources: null,
+		owned_cost_notes: null,
+	};
+	const sub = formatFeishuOwnerSaleAlert(
+		{
+			...base,
+			downstream_site_host: "777.lsrai.shop",
+			downstream_parent_order_no: "DJ20261016005006527976",
+			downstream_buyer_email: "buyer@example.com",
+		},
+		null,
+	);
+	expect(sub).toContain("💰 新订单｜子站 777.lsrai.shop");
+	expect(sub).toContain("\n子站订单：DJ20261016005006527976\n");
+	expect(sub).toContain("下单客户：buyer@example.com");
+	expect(sub).toContain("支付：lsrai.shop 钱包扣款，余额 ¥500.00");
+	expect(sub).not.toContain("api-account@example.com");
+	expect(sub).not.toContain("代理站订单");
+
+	// Older lsrai.shop builds send only the child order number.
+	const main = formatFeishuOwnerSaleAlert(base, null);
+	expect(main).toContain("💰 新订单｜代理站 lsrai.shop");
+	expect(main).toContain("代理站订单：DJ20261016005006527976\n");
+	expect(main).not.toContain("子站");
+});
