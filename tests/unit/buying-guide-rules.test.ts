@@ -237,7 +237,7 @@ it("has Chinese and English copy for every reachable question, answer and stop",
 				>,
 		),
 	);
-	expect(catalogs[0]?.guide_fivehundred).toBe("Pro 500美元档");
+	expect(catalogs[0]?.guide_fivehundred).toBe("Pro 500");
 	expect(catalogs[1]?.guide_fivehundred).toBe("Pro $500 tier");
 	const visit = (path: string[]) => {
 		const step = guideStep(path);

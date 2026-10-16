@@ -17,6 +17,12 @@ const capacitySchema = z.object({
 		sellable: z.number().int().nonnegative(),
 	}),
 });
+// Codes issued before the iOS Pro SKUs were renamed keep their original prefix.
+const LEGACY_CODE_PREFIXES: Record<string, string[]> = {
+	GPT_100_IOS: ["gpt-5x-ios"],
+	GPT_200_IOS: ["gpt-20x-ios"],
+};
+
 export async function saleComponents(db: D1Database) {
 	const row = await db
 		.prepare(
@@ -46,8 +52,12 @@ export async function refreshSaleCapacity(
 ) {
 	const sku = (await saleComponents(db))[component];
 	if (!sku) return null;
+	const prefixes = [
+		sku.toLowerCase().replaceAll("_", "-"),
+		...(LEGACY_CODE_PREFIXES[sku] ?? []),
+	];
 	const codePattern = new RegExp(
-		`${sku.toLowerCase().replaceAll("_", "-")}-[A-Z2-9]{4}(?:-[A-Z2-9]{4}){3}`,
+		`(?:${prefixes.join("|")})-[A-Z2-9]{4}(?:-[A-Z2-9]{4}){3}`,
 		"gi",
 	);
 	const secret = commerceSecret ?? (await loadRuntimeConfig(db)).commerceSecret;
