@@ -114,6 +114,7 @@ export const telegramWebSupportConversations = sqliteTable(
 			enum: ["customer", "administrator", "idle_timeout"],
 		}),
 		lastActivityAt: integer("last_activity_at", { mode: "timestamp_ms" }),
+		feishuAlertedAt: integer("feishu_alerted_at", { mode: "timestamp_ms" }),
 		...timestamps,
 	},
 	(table) => [

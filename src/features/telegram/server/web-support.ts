@@ -303,7 +303,12 @@ export async function sendWebSupportMessage(
 			reply_markup: supportEmailKeyboard(conversation.id),
 		});
 		await touchWebConversation(db, conversation.id);
-		scheduleFeishuWebSupportAlert(db, conversation.topic_name, input.text);
+		scheduleFeishuWebSupportAlert(
+			db,
+			conversation.id,
+			conversation.topic_name,
+			input.text,
+		);
 		await maybeReplyWebSupportAway(db, api, conversation);
 		return { sent: true };
 	} catch (error) {
@@ -323,7 +328,12 @@ export async function sendWebSupportMessage(
 				message_thread_id: topic.message_thread_id,
 			});
 			await touchWebConversation(db, conversation.id);
-			scheduleFeishuWebSupportAlert(db, conversation.topic_name, input.text);
+			scheduleFeishuWebSupportAlert(
+				db,
+				conversation.id,
+				conversation.topic_name,
+				input.text,
+			);
 			await maybeReplyWebSupportAway(db, api, conversation);
 			return { sent: true };
 		}
@@ -376,13 +386,26 @@ export async function maybeReplyWebSupportAway(
 	}
 }
 
+// One Feishu ping per conversation per 5 minutes; the full thread is in Telegram.
+const WEB_SUPPORT_FEISHU_QUIET_MS = 5 * 60_000;
+
 function scheduleFeishuWebSupportAlert(
 	db: D1Database,
+	conversationId: string,
 	topicName: string | null | undefined,
 	message: string,
 ) {
 	const task = (async () => {
 		try {
+			const now = Date.now();
+			const claimed = await db
+				.prepare(
+					`UPDATE telegram_web_support_conversations SET feishu_alerted_at = ?
+					 WHERE id = ? AND (feishu_alerted_at IS NULL OR feishu_alerted_at <= ?)`,
+				)
+				.bind(now, conversationId, now - WEB_SUPPORT_FEISHU_QUIET_MS)
+				.run();
+			if (Number(claimed.meta.changes ?? 0) !== 1) return;
 			const credentials = await resolveFeishuAlertCredentials(db);
 			if (!credentials) return;
 			await sendFeishuText(
