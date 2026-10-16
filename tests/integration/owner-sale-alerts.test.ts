@@ -41,12 +41,11 @@ describe("owner sale alerts", { timeout: 30_000 }, () => {
 			}),
 		).resolves.toEqual({ scanned: 1, sent: 1, deferred: 0, failed: 0 });
 		expect(messages).toHaveLength(1);
-		expect(messages[0]).toContain("💰 老实人VIP新订单");
+		expect(messages[0]).toContain("💰 新订单｜主站");
 		expect(messages[0]).toContain("商品：ChatGPT会员 · Plus菲区 × 1");
-		expect(messages[0]).toContain("商品售价：¥119.00");
-		expect(messages[0]).toContain("下单邮箱：未填写");
-		expect(messages[0]).toContain("CDK来源：人工采购");
-		expect(messages[0]).toContain("采购钱包剩余额度：¥467.00");
+		expect(messages[0]).toContain("售价：¥119.00");
+		expect(messages[0]).toContain("邮箱：未填写");
+		expect(messages[0]).toContain("货源：人工采购");
 		await expect(
 			publishPendingOwnerSaleAlerts({
 				db,
@@ -156,9 +155,8 @@ describe("owner sale alerts", { timeout: 30_000 }, () => {
 				},
 			}),
 		).resolves.toEqual({ scanned: 1, sent: 1, deferred: 0, failed: 0 });
-		expect(messages[0]).toContain("交付：自动交付完成");
-		expect(messages[0]).toContain("CDK来源：钱包额度下单");
-		expect(messages[0]).toContain("采购钱包剩余额度：¥385.00");
+		expect(messages[0]).toContain("货源：钱包额度下单");
+		expect(messages[0]).toContain("采购钱包余额：¥385.00");
 	});
 
 	it("uses the order wallet ledger and allocated stock instead of current mutable state", async () => {
@@ -207,13 +205,91 @@ describe("owner sale alerts", { timeout: 30_000 }, () => {
 			},
 		});
 		expect(messages).toHaveLength(1);
-		expect(messages[0]).toContain("下单邮箱：wallet@example.com");
-		expect(messages[0]).toContain("支付方式：用户钱包");
-		expect(messages[0]).toContain("用户钱包剩余额度：¥9.99");
+		expect(messages[0]).toContain("邮箱：wallet@example.com");
+		expect(messages[0]).toContain("用户钱包");
+		expect(messages[0]).toContain("余额 ¥9.99");
 		expect(messages[0]).not.toContain("¥1.11");
-		expect(messages[0]).toContain("CDK来源：内置库存");
-		expect(messages[0]).toContain("我们的成本：¥115.00");
-		expect(messages[0]).toContain("我们的利润：¥4.00");
+		expect(messages[0]).toContain("货源：内置库存");
+		expect(messages[0]).toContain("成本：¥115.00");
+		expect(messages[0]).toContain("利润：¥4.00");
+	});
+
+	it("waits for the warehouse's real cost of an owned code, then reports it", async () => {
+		await db.batch([
+			db.prepare(
+				`INSERT INTO system_settings (key, value, updated_at)
+				 VALUES ('integration.supply_console_map', '{"sellable":"GPT_PLUS_IOS"}', 1)`,
+			),
+			db.prepare(
+				`UPDATE product_sellable_items SET fulfillment_source='local' WHERE id='sellable'`,
+			),
+			db.prepare(
+				`INSERT INTO stock_entries
+				 (id, sellable_item_id, content_encrypted, key_version,
+				  content_fingerprint, content_mask, status, order_item_id,
+				  unit_cost_minor, created_at, updated_at)
+				 VALUES ('owned-code', 'sellable', 'ciphertext', 1,
+				  'fingerprint', '••••1234', 'delivered', 'item', '10000', 1, 1)`,
+			),
+		]);
+		const created = Number(
+			(
+				await db
+					.prepare(
+						"SELECT created_at FROM outbox_events WHERE event_type='owner.sale_alert'",
+					)
+					.first<{ created_at: number }>()
+			)?.created_at,
+		);
+		const messages: string[] = [];
+		const publish = (now: number) =>
+			publishPendingOwnerSaleAlerts({
+				db,
+				now,
+				readBalance: async () => null,
+				deliver: async (text) => {
+					messages.push(text);
+				},
+			});
+		expect((await publish(created + 1_000)).deferred).toBe(1);
+		expect(messages).toHaveLength(0);
+		await db
+			.prepare(
+				"UPDATE stock_entries SET cost_source='warehouse_bought', unit_cost_minor='12200', cost_note='86订单 503426098423060557' WHERE id='owned-code'",
+			)
+			.run();
+		expect((await publish(created + 60_000)).sent).toBe(1);
+		expect(messages[0]).toContain(
+			"货源：86 自动采购（86订单 503426098423060557）",
+		);
+		expect(messages[0]).toContain("成本：¥122.00");
+		expect(messages[0]).not.toContain("¥100.00");
+	});
+
+	it("flags a failed 86 restock and never guesses the cost", async () => {
+		await db.batch([
+			db.prepare(
+				`INSERT INTO stock_entries
+				 (id, sellable_item_id, content_encrypted, key_version,
+				  content_fingerprint, content_mask, status, order_item_id,
+				  unit_cost_minor, cost_source, cost_note, created_at, updated_at)
+				 VALUES ('owned-code', 'sellable', 'ciphertext', 1,
+				  'fingerprint', '••••1234', 'delivered', 'item', '10000',
+				  'warehouse_unavailable', 'trade_refused: 该商品未开放对接', 1, 1)`,
+			),
+		]);
+		const messages: string[] = [];
+		await publishPendingOwnerSaleAlerts({
+			db,
+			readBalance: async () => null,
+			deliver: async (text) => {
+				messages.push(text);
+			},
+		});
+		expect(messages[0]).toContain(
+			"⚠️ 86 补货失败，请手动补卡（trade_refused: 该商品未开放对接）",
+		);
+		expect(messages[0]).toContain("成本：待确认　利润：待确认");
 	});
 });
 
@@ -245,6 +321,9 @@ it("formats cached balances explicitly", () => {
 			wallet_balance_after_minor: null,
 			internal_supply_count: 1,
 			downstream_order_no: "DJ-INTERNAL-1",
+			owned_cost_pending_count: 0,
+			owned_cost_sources: null,
+			owned_cost_notes: null,
 		},
 		{
 			amountMinor: "50000",
@@ -253,14 +332,12 @@ it("formats cached balances explicitly", () => {
 			fresh: false,
 		},
 	);
-	expect(text).toContain("用户实际支付：¥41.67");
-	expect(text).toContain("手续费：¥1.67（用户承担）");
-	expect(text).toContain("CDK来源：内置库存");
-	expect(text).toContain("💰 老实人VIP内部供货单");
-	expect(text).toContain("关联子站订单：DJ-INTERNAL-1");
-	expect(text).toContain("VIP供货层利润：¥7.00");
-	expect(text).toContain("请勿重复相加");
-	expect(text).toContain("采购钱包剩余额度：¥500.00（缓存）");
+	expect(text).toContain("实付 ¥41.67");
+	expect(text).toContain("手续费 ¥1.67 用户承担");
+	expect(text).toContain("货源：内置库存");
+	expect(text).toContain("💰 新订单｜代理站 lsrai.shop");
+	expect(text).toContain("子站订单 DJ-INTERNAL-1");
+	expect(text).toContain("利润：¥7.00（主站这一层）");
 });
 
 it("subtracts a seller-borne channel fee from owner profit", () => {
@@ -291,12 +368,15 @@ it("subtracts a seller-borne channel fee from owner profit", () => {
 			wallet_balance_after_minor: null,
 			internal_supply_count: 0,
 			downstream_order_no: null,
+			owned_cost_pending_count: 0,
+			owned_cost_sources: null,
+			owned_cost_notes: null,
 		},
 		null,
 	);
-	expect(text).toContain("用户实际支付：¥45.00");
-	expect(text).toContain("手续费：¥0.72（我们承担）");
-	expect(text).toContain("我们的利润：¥9.28");
+	expect(text).toContain("实付 ¥45.00");
+	expect(text).toContain("手续费 ¥0.72 我们承担");
+	expect(text).toContain("利润：¥9.28");
 });
 
 async function seedSale(db: D1Database) {

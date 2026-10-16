@@ -196,13 +196,25 @@ async function createSupplierOrder(
 ) {
 	const body = JSON.parse(rawBody) as Record<string, unknown>;
 	return Response.json(
-		await createSupplierApiOrder(db, identity, {
-			skuId: String(body.sku_id ?? ""),
-			quantity: Number(body.quantity),
-			downstreamOrderNo: String(body.downstream_order_no ?? ""),
-			callbackUrl: body.callback_url ? String(body.callback_url) : null,
-			traceId: body.trace_id ? String(body.trace_id) : undefined,
-		}),
+		await createSupplierApiOrder(
+			db,
+			identity,
+			{
+				skuId: String(body.sku_id ?? ""),
+				quantity: Number(body.quantity),
+				downstreamOrderNo: String(body.downstream_order_no ?? ""),
+				callbackUrl: body.callback_url ? String(body.callback_url) : null,
+				traceId: body.trace_id ? String(body.trace_id) : undefined,
+			},
+			{
+				// Display only and outside the request digest, so retries stay idempotent.
+				siteHost:
+					typeof body.downstream_site_host === "string" &&
+					/^[a-z0-9.-]{1,253}$/i.test(body.downstream_site_host)
+						? body.downstream_site_host.toLowerCase()
+						: null,
+			},
+		),
 	);
 }
 

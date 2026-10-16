@@ -1475,6 +1475,8 @@ export const stockEntries = sqliteTable(
 		procurementSource: text("procurement_source"),
 		procurementRequestRef: text("procurement_request_ref"),
 		unitCostMinor: text("unit_cost_minor"),
+		costSource: text("cost_source"),
+		costNote: text("cost_note"),
 		note: text("note"),
 		reservedAt: integer("reserved_at", { mode: "timestamp_ms" }),
 		deliveredAt: integer("delivered_at", { mode: "timestamp_ms" }),

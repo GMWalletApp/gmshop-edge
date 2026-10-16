@@ -29,6 +29,7 @@ export async function createSupplierApiOrder(
 	db: D1Database,
 	identity: SupplierApiIdentity,
 	input: OrderInput,
+	display: { siteHost?: string | null } = {},
 ) {
 	if (
 		!Number.isInteger(input.quantity) ||
@@ -167,7 +168,7 @@ export async function createSupplierApiOrder(
 				),
 			db
 				.prepare(
-					`INSERT INTO supplier_api_orders (id, shop_order_id, user_id, api_key_id, downstream_order_no, request_digest, callback_url, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)`,
+					`INSERT INTO supplier_api_orders (id, shop_order_id, user_id, api_key_id, downstream_order_no, downstream_site_host, request_digest, callback_url, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)`,
 				)
 				.bind(
 					apiOrderId,
@@ -175,6 +176,7 @@ export async function createSupplierApiOrder(
 					identity.userId,
 					identity.keyRowId,
 					input.downstreamOrderNo,
+					display.siteHost ?? null,
 					digest,
 					input.callbackUrl ?? null,
 					now,

@@ -34,35 +34,100 @@ export function ownedCodePattern(sku: string) {
 	);
 }
 
-// Tells the warehouse which owned codes were just sold so it can buy their upstream keys before
-// the customer redeems. Best effort: delivery never waits on it or fails because of it.
+const assignmentSchema = z.object({
+	success: z.literal(true),
+	data: z.object({
+		results: z.array(
+			z.object({
+				code_hash: z.string(),
+				source: z.string(),
+				costMinor: z.string().nullable().optional(),
+				tradeNo: z.string().nullable().optional(),
+				reason: z.string().optional(),
+			}),
+		),
+	}),
+});
+
+// Tells the warehouse which owned codes were just sold. It binds an upstream key to each (buying one
+// when none is free) and answers with that key's real cost, which becomes this entry's cost.
+// Best effort: delivery never waits on it or fails because of it.
 export async function notifyWarehouseSale(
 	db: D1Database,
 	orderItemId: string,
-	plaintext: string,
+	entries: { id: string; plaintext: string }[],
 	commerceSecret: string,
 	requester: typeof requestWarehouse = requestWarehouse,
 ) {
+	const item = await db
+		.prepare("SELECT sellable_item_id FROM shop_order_items WHERE id=?")
+		.bind(orderItemId)
+		.first<{ sellable_item_id: string }>()
+		.catch(() => null);
+	const sku = item
+		? await saleComponents(db)
+				.then((map) => map[item.sellable_item_id])
+				.catch(() => undefined)
+		: undefined;
+	if (!sku) return;
+	const coded: { id: string; hash: string }[] = [];
+	for (const entry of entries) {
+		const code = entry.plaintext.match(ownedCodePattern(sku))?.[0];
+		if (code)
+			coded.push({ id: entry.id, hash: await sha256Hex(code.toLowerCase()) });
+	}
+	if (coded.length === 0) return;
+	const mark = (
+		id: string,
+		source: string,
+		costMinor: string | null,
+		note: string | null,
+	) =>
+		db
+			.prepare(
+				"UPDATE stock_entries SET cost_source=?, unit_cost_minor=COALESCE(?, unit_cost_minor), cost_note=?, updated_at=? WHERE id=?",
+			)
+			.bind(source, costMinor, note, Date.now(), id);
 	try {
-		const item = await db
-			.prepare("SELECT sellable_item_id FROM shop_order_items WHERE id=?")
-			.bind(orderItemId)
-			.first<{ sellable_item_id: string }>();
-		const sku = item ? (await saleComponents(db))[item.sellable_item_id] : null;
-		if (!sku) return;
-		const codes = plaintext.match(ownedCodePattern(sku)) ?? [];
-		if (codes.length === 0) return;
 		const token = await loadDeliveryWarehouseToken(db, commerceSecret);
-		await requester(token, "/api/internal/faka/sold", {
-			method: "POST",
-			body: JSON.stringify({
-				code_hashes: await Promise.all(
-					codes.map((code) => sha256Hex(code.toLowerCase())),
-				),
+		const { data } = assignmentSchema.parse(
+			await requester(token, "/api/internal/faka/sold", {
+				method: "POST",
+				body: JSON.stringify({ code_hashes: coded.map((entry) => entry.hash) }),
 			}),
-		});
+		);
+		const byHash = new Map(
+			data.results.map((result) => [result.code_hash, result]),
+		);
+		await db.batch(
+			coded.map(({ id, hash }) => {
+				const result = byHash.get(hash);
+				if (!result || result.source === "skip")
+					return mark(id, "static", null, null);
+				if (
+					(result.source === "stock" || result.source === "faka") &&
+					result.costMinor
+				)
+					return mark(
+						id,
+						result.source === "faka" ? "warehouse_bought" : "warehouse_stock",
+						result.costMinor,
+						result.tradeNo ? `86订单 ${result.tradeNo}` : null,
+					);
+				return mark(
+					id,
+					"warehouse_unavailable",
+					null,
+					(result.reason ?? "未知原因").slice(0, 200),
+				);
+			}),
+		);
 	} catch {
-		// The warehouse still buys on demand when the customer redeems.
+		await db
+			.batch(
+				coded.map(({ id }) => mark(id, "warehouse_unreachable", null, null)),
+			)
+			.catch(() => undefined);
 	}
 }
 

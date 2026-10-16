@@ -404,6 +404,14 @@ describe.each([
 				"delivery-content",
 			),
 		).toContain(code(0));
+		expect(
+			await db
+				.prepare(
+					"SELECT cost_source FROM stock_entries WHERE order_item_id IN (SELECT id FROM shop_order_items WHERE order_id=?)",
+				)
+				.bind(first.id)
+				.first(),
+		).toEqual({ cost_source: "warehouse_unreachable" });
 		// The only outbound call is the best-effort sale notice; an offline warehouse never blocks delivery.
 		expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
 			"https://redeem.laoshirenvip.com/api/internal/faka/sold",
@@ -411,6 +419,48 @@ describe.each([
 		expect(
 			JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).code_hashes,
 		).toEqual([await sha256Hex(code(0).toLowerCase())]);
+	});
+
+	it("records the warehouse's real upstream cost on the delivered code", async () => {
+		const first = await checkout(1);
+		await completeWalletStoreOrder(db, { orderId: first.id, userId: user });
+		const delivery = await db
+			.prepare(
+				"SELECT d.id FROM delivery_records d JOIN shop_order_items i ON i.id=d.order_item_id WHERE i.order_id=?",
+			)
+			.bind(first.id)
+			.first<{ id: string }>();
+		const hash = await sha256Hex(code(0).toLowerCase());
+		fetcher.mockReset().mockImplementation(async (input) => {
+			if (String(input).endsWith("/api/internal/faka/sold"))
+				return Response.json({
+					success: true,
+					data: {
+						results: [
+							{
+								code_hash: hash,
+								source: "faka",
+								costMinor: "12200",
+								tradeNo: "503426098423060557",
+							},
+						],
+					},
+				});
+			throw new Error("Unexpected external call");
+		});
+		await processDelivery(db, String(delivery?.id));
+		expect(
+			await db
+				.prepare(
+					"SELECT unit_cost_minor, cost_source, cost_note FROM stock_entries WHERE order_item_id IN (SELECT id FROM shop_order_items WHERE order_id=?)",
+				)
+				.bind(first.id)
+				.first(),
+		).toEqual({
+			unit_cost_minor: "12200",
+			cost_source: "warehouse_bought",
+			cost_note: "86订单 503426098423060557",
+		});
 	});
 
 	it("legacy pending orders without a code hold allocate owned stock without upstream access", async () => {

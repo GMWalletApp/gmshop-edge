@@ -49,7 +49,7 @@ export async function processDelivery(db: D1Database, deliveryId: string) {
 		);
 	const now = Date.now();
 	let contentEncrypted = delivery.content_encrypted;
-	let soldPlaintext: string | null = null;
+	let soldEntries: { id: string; plaintext: string }[] = [];
 	if (delivery.delivery_type === "stock") {
 		const runtime = await loadRuntimeConfig(db);
 		if (!runtime.commerceSecret)
@@ -117,9 +117,12 @@ export async function processDelivery(db: D1Database, deliveryId: string) {
 				),
 			);
 		}
-		soldPlaintext = plaintext.join("\n");
+		soldEntries = entries.results.map((entry, index) => ({
+			id: entry.id,
+			plaintext: plaintext[index] ?? "",
+		}));
 		contentEncrypted = await encryptDeliveryContent(
-			soldPlaintext,
+			plaintext.join("\n"),
 			runtime.commerceSecret,
 		);
 	}
@@ -241,13 +244,13 @@ export async function processDelivery(db: D1Database, deliveryId: string) {
 
 	if (Number(results[0]?.meta.changes ?? 0) < 1)
 		return { id: delivery.id, status: "delivered", duplicate: true };
-	if (soldPlaintext) {
+	if (soldEntries.length > 0) {
 		const runtime = await loadRuntimeConfig(db);
 		if (runtime.commerceSecret)
 			await notifyWarehouseSale(
 				db,
 				delivery.order_item_id,
-				soldPlaintext,
+				soldEntries,
 				runtime.commerceSecret,
 			);
 	}

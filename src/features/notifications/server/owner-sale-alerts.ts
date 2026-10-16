@@ -45,6 +45,12 @@ type SaleAlertRow = {
 	wallet_balance_after_minor: string | null;
 	internal_supply_count: number;
 	downstream_order_no: string | null;
+	downstream_site_host?: string | null;
+	event_created_at: number;
+	// Owned redemption codes whose real upstream cost the warehouse has not reported yet.
+	owned_cost_pending_count: number;
+	owned_cost_sources: string | null;
+	owned_cost_notes: string | null;
 };
 
 type Balance = {
@@ -179,7 +185,26 @@ export async function publishPendingOwnerSaleAlerts(input: {
 			        (SELECT COUNT(*) FROM supplier_api_orders internal_order
 			         WHERE internal_order.shop_order_id = orders.id) AS internal_supply_count,
 			        (SELECT internal_order.downstream_order_no FROM supplier_api_orders internal_order
-			         WHERE internal_order.shop_order_id = orders.id LIMIT 1) AS downstream_order_no
+			         WHERE internal_order.shop_order_id = orders.id LIMIT 1) AS downstream_order_no,
+			        (SELECT internal_order.downstream_site_host FROM supplier_api_orders internal_order
+			         WHERE internal_order.shop_order_id = orders.id LIMIT 1) AS downstream_site_host,
+			        event.created_at AS event_created_at,
+			        (SELECT COUNT(*) FROM stock_entries owned
+			         JOIN shop_order_items owned_item ON owned_item.id = owned.order_item_id
+			         WHERE owned_item.order_id = orders.id AND owned.cost_source IS NULL
+			          AND owned.status IN ('reserved', 'delivered')
+			          AND EXISTS (SELECT 1 FROM system_settings map, json_each(map.value) mapped
+			                      WHERE map.key = 'integration.supply_console_map'
+			                       AND json_valid(map.value) AND json_type(map.value) = 'object'
+			                       AND mapped.key = owned.sellable_item_id)) AS owned_cost_pending_count,
+			        (SELECT GROUP_CONCAT(DISTINCT owned.cost_source) FROM stock_entries owned
+			         JOIN shop_order_items owned_item ON owned_item.id = owned.order_item_id
+			         WHERE owned_item.order_id = orders.id AND owned.cost_source IS NOT NULL)
+			         AS owned_cost_sources,
+			        (SELECT GROUP_CONCAT(owned.cost_note, '；') FROM stock_entries owned
+			         JOIN shop_order_items owned_item ON owned_item.id = owned.order_item_id
+			         WHERE owned_item.order_id = orders.id AND owned.cost_note IS NOT NULL)
+			         AS owned_cost_notes
 			 FROM outbox_events event
 			 JOIN shop_orders orders ON orders.id = event.aggregate_id
 			 WHERE event.event_type = 'owner.sale_alert'
@@ -204,6 +229,21 @@ export async function publishPendingOwnerSaleAlerts(input: {
 			.bind(leaseUntil, now, row.id, now)
 			.run();
 		if (Number(claim.meta.changes ?? 0) !== 1) continue;
+		// Wait (up to 3 minutes) for the warehouse to report the real cost of owned codes.
+		if (
+			row.owned_cost_pending_count > 0 &&
+			now - row.event_created_at < 180_000
+		) {
+			await defer(
+				input.db,
+				row.id,
+				now,
+				"owner_sale_waiting_for_cost",
+				leaseUntil,
+			);
+			deferred += 1;
+			continue;
+		}
 		if (row.supplier_pending_count > 0) {
 			await defer(
 				input.db,
@@ -252,45 +292,43 @@ export async function publishPendingOwnerSaleAlerts(input: {
 	return { scanned: rows.results.length, sent, deferred, failed };
 }
 
-export function formatFeishuOwnerSaleAlert(
-	row: Omit<SaleAlertRow, "id" | "aggregate_id" | "attempt_count">,
-	balance: Balance | null,
-	now = Date.now(),
-) {
-	const amount = formatMinorAmountWithSymbol(
-		row.total_minor,
+const money = (
+	minor: string,
+	row: { currency: string; currency_decimals: number },
+) =>
+	formatMinorAmountWithSymbol(
+		minor,
 		row.currency,
 		row.currency_decimals,
 		"zh-CN",
 	);
-	const cost =
-		row.cost_missing_count > 0
-			? "待核对"
-			: formatMinorAmountWithSymbol(
-					row.cost_total_minor,
-					row.currency,
-					row.currency_decimals,
-					"zh-CN",
-				);
+
+export function formatFeishuOwnerSaleAlert(
+	row: Omit<
+		SaleAlertRow,
+		"id" | "aggregate_id" | "attempt_count" | "event_created_at"
+	> & { event_created_at?: number },
+	balance: Balance | null,
+	now = Date.now(),
+) {
+	const sources = (row.owned_cost_sources ?? "").split(",").filter(Boolean);
+	const notes = row.owned_cost_notes ?? "";
+	const costUnknown =
+		row.cost_missing_count > 0 ||
+		(row.owned_cost_pending_count ?? 0) > 0 ||
+		sources.includes("warehouse_unavailable") ||
+		sources.includes("warehouse_unreachable");
 	const walletPaid = row.wallet_balance_after_minor !== null;
-	const actualPaid = walletPaid
-		? amount
-		: row.payment_amount_minor && row.payment_currency
-			? formatMinorAmountWithSymbol(
-					row.payment_amount_minor,
-					row.payment_currency,
-					row.payment_currency_decimals ?? row.currency_decimals,
-					"zh-CN",
-				)
-			: amount;
-	let fee = walletPaid ? "¥0.00（无手续费）" : "待核对";
+	let feeText = walletPaid ? "无手续费" : "手续费待核对";
 	let netRevenueMinor = BigInt(row.total_minor);
+	let paidMinor = row.total_minor;
 	if (
 		row.payment_amount_minor !== null &&
 		row.payment_currency === row.currency &&
 		row.payment_currency_decimals === row.currency_decimals
 	) {
 		const paymentMinor = BigInt(row.payment_amount_minor);
+		paidMinor = row.payment_amount_minor;
 		const feeMinor = BigInt(
 			paymentProcessingFeeAmount(
 				row.payment_amount_minor,
@@ -301,67 +339,59 @@ export function formatFeishuOwnerSaleAlert(
 		const surchargeMinor = paymentMinor - BigInt(row.total_minor);
 		const customerCoveredFeeMinor = surchargeMinor > 0n ? surchargeMinor : 0n;
 		const bearer =
+			customerCoveredFeeMinor >= feeMinor
+				? "用户承担"
+				: customerCoveredFeeMinor === 0n
+					? "我们承担"
+					: "用户和我们共同承担";
+		feeText =
 			feeMinor === 0n
 				? "无手续费"
-				: customerCoveredFeeMinor >= feeMinor
-					? "用户承担"
-					: customerCoveredFeeMinor === 0n
-						? "我们承担"
-						: "用户和我们共同承担";
-		fee = `${formatMinorAmountWithSymbol(
-			feeMinor.toString(),
-			row.currency,
-			row.currency_decimals,
-			"zh-CN",
-		)}（${bearer}）`;
+				: `手续费 ${money(feeMinor.toString(), row)} ${bearer}`;
 		netRevenueMinor = paymentMinor - feeMinor;
 	}
-	const profit =
-		row.cost_missing_count > 0
-			? "待核对"
-			: formatMinorAmountWithSymbol(
-					(netRevenueMinor - BigInt(row.cost_total_minor)).toString(),
-					row.currency,
-					row.currency_decimals,
-					"zh-CN",
-				);
-	const walletRemaining = walletPaid
-		? formatMinorAmountWithSymbol(
-				row.wallet_balance_after_minor ?? "0",
-				row.currency,
-				row.currency_decimals,
-				"zh-CN",
-			)
-		: "不适用";
-	const remaining = balance
-		? `${formatMinorAmountWithSymbol(
-				balance.amountMinor,
-				balance.currency,
-				balance.currencyDecimals,
-				"zh-CN",
-			)}${balance.fresh ? "" : "（缓存）"}`
-		: "未配置";
-	const fulfillment =
+	const payment = walletPaid
+		? `用户钱包，余额 ${money(row.wallet_balance_after_minor ?? "0", row)}`
+		: `实付 ${money(paidMinor, row)} · ${row.payment_channel ?? "无需支付"} · ${feeText}`;
+	const failedSupply = notes
+		.split("；")
+		.filter((note) => note && !note.startsWith("86订单"))
+		.join("；");
+	const boughtOrders = notes
+		.split("；")
+		.filter((note) => note.startsWith("86订单"))
+		.join("；");
+	const source = sources.includes("warehouse_unavailable")
+		? `⚠️ 86 补货失败，请手动补卡（${failedSupply || "原因未知"}）`
+		: sources.includes("warehouse_unreachable") ||
+				(row.owned_cost_pending_count ?? 0) > 0
+			? "⚠️ 兑换站未回报成本，待确认"
+			: sources.includes("warehouse_bought")
+				? `86 自动采购${boughtOrders ? `（${boughtOrders}）` : ""}${sources.includes("warehouse_stock") ? "＋已有 86 卡密" : ""}`
+				: sources.includes("warehouse_stock")
+					? "已有 86 卡密"
+					: row.supplier_fulfilled_count > 0 && row.local_fulfilled_count > 0
+						? "内置库存＋钱包额度下单"
+						: row.supplier_fulfilled_count > 0
+							? "钱包额度下单"
+							: row.local_fulfilled_count > 0
+								? "内置库存"
+								: row.manual_item_count > 0
+									? "人工采购"
+									: "待核对";
+	const cost = costUnknown ? "待确认" : money(row.cost_total_minor, row);
+	const profit = costUnknown
+		? "待确认"
+		: money((netRevenueMinor - BigInt(row.cost_total_minor)).toString(), row);
+	const internal = row.internal_supply_count > 0;
+	const delivery =
 		row.supplier_failed_count > 0
-			? "自动交付异常"
-			: row.supplier_fulfilled_count > 0 || row.supplier_item_count > 0
-				? "自动交付完成"
-				: row.manual_item_count > 0
-					? "人工采购"
-					: "自动交付";
-	const cdkSource =
-		row.supplier_fulfilled_count > 0 && row.local_fulfilled_count > 0
-			? "混合：内置库存＋钱包额度下单"
-			: row.supplier_fulfilled_count > 0
-				? "钱包额度下单"
-				: row.local_fulfilled_count > 0
-					? "内置库存"
-					: row.manual_item_count > 0
-						? "人工采购"
-						: "待核对";
+			? "⚠️ 自动交付异常"
+			: row.manual_item_count > 0 && row.supplier_item_count === 0
+				? "⚠️ 需要人工采购"
+				: null;
 	const time = new Intl.DateTimeFormat("zh-CN", {
 		timeZone: "Asia/Shanghai",
-		year: "numeric",
 		month: "2-digit",
 		day: "2-digit",
 		hour: "2-digit",
@@ -370,33 +400,22 @@ export function formatFeishuOwnerSaleAlert(
 	})
 		.format(now)
 		.replaceAll("/", "-");
-	const title =
-		row.internal_supply_count > 0
-			? "💰 老实人VIP内部供货单"
-			: "💰 老实人VIP新订单";
+	const purchaseWallet =
+		row.supplier_fulfilled_count > 0 && balance
+			? `${money(balance.amountMinor, { currency: balance.currency, currency_decimals: balance.currencyDecimals })}${balance.fresh ? "" : "（缓存）"}`
+			: null;
 	return [
-		title,
-		`订单：${row.order_number}`,
-		...(row.downstream_order_no
-			? [`关联子站订单：${row.downstream_order_no}`]
-			: []),
-		`下单邮箱：${row.contact_email || "未填写"}`,
+		internal
+			? `💰 新订单｜代理站 ${row.downstream_site_host ?? "lsrai.shop"}`
+			: "💰 新订单｜主站",
 		`商品：${row.items_summary}`,
-		`商品售价：${amount}`,
-		`用户实际支付：${actualPaid}`,
-		`手续费：${fee}`,
-		`支付方式：${walletPaid ? "用户钱包" : (row.payment_channel ?? "无需支付")}`,
-		`用户钱包剩余额度：${walletRemaining}`,
-		`CDK来源：${cdkSource}`,
-		`我们的成本：${cost}`,
-		`${row.internal_supply_count > 0 ? "VIP供货层利润" : "我们的利润"}：${profit}`,
-		...(row.internal_supply_count > 0
-			? ["利润口径：已包含在lsrai.shop整单利润中，请勿重复相加"]
-			: []),
-		`交付：${fulfillment}`,
-		`内置库存剩余：${row.local_stock_remaining_summary ?? "不适用"}`,
-		`采购钱包剩余额度：${remaining}`,
-		`时间：${time}（北京时间）`,
+		`${internal ? "代理拿货价" : "售价"}：${money(row.total_minor, row)}（${payment}）`,
+		`货源：${source}`,
+		`成本：${cost}　利润：${profit}${internal ? "（主站这一层）" : ""}`,
+		...(delivery ? [delivery] : []),
+		...(purchaseWallet ? [`采购钱包余额：${purchaseWallet}`] : []),
+		`订单：${row.order_number}${row.downstream_order_no ? `（子站订单 ${row.downstream_order_no}）` : ""}`,
+		`邮箱：${row.contact_email || "未填写"}　${time}`,
 	].join("\n");
 }
 
