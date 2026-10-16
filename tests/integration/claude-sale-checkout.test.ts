@@ -9,6 +9,7 @@ import { createMultiStoreOrder } from "#/features/storefront/server/multi-order"
 import { storefrontStockExpression } from "#/features/storefront/server/stock-availability";
 import { listSupplierCatalog } from "#/features/supplier-api/server/catalog";
 import { createSupplierApiOrder } from "#/features/supplier-api/server/orders";
+import { sha256Hex } from "#/lib/crypto";
 import { decryptSecret, encryptSecret } from "#/lib/secrets";
 import { applyMigrations } from "./migrations";
 
@@ -403,7 +404,13 @@ describe.each([
 				"delivery-content",
 			),
 		).toContain(code(0));
-		expect(fetcher).not.toHaveBeenCalled();
+		// The only outbound call is the best-effort sale notice; an offline warehouse never blocks delivery.
+		expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+			"https://redeem.laoshirenvip.com/api/internal/faka/sold",
+		]);
+		expect(
+			JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).code_hashes,
+		).toEqual([await sha256Hex(code(0).toLowerCase())]);
 	});
 
 	it("legacy pending orders without a code hold allocate owned stock without upstream access", async () => {

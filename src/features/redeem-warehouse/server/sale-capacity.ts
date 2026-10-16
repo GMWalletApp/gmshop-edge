@@ -23,6 +23,49 @@ const LEGACY_CODE_PREFIXES: Record<string, string[]> = {
 	GPT_200_IOS: ["gpt-20x-ios"],
 };
 
+export function ownedCodePattern(sku: string) {
+	const prefixes = [
+		sku.toLowerCase().replaceAll("_", "-"),
+		...(LEGACY_CODE_PREFIXES[sku] ?? []),
+	];
+	return new RegExp(
+		`(?:${prefixes.join("|")})-[A-Z2-9]{4}(?:-[A-Z2-9]{4}){3}`,
+		"gi",
+	);
+}
+
+// Tells the warehouse which owned codes were just sold so it can buy their upstream keys before
+// the customer redeems. Best effort: delivery never waits on it or fails because of it.
+export async function notifyWarehouseSale(
+	db: D1Database,
+	orderItemId: string,
+	plaintext: string,
+	commerceSecret: string,
+	requester: typeof requestWarehouse = requestWarehouse,
+) {
+	try {
+		const item = await db
+			.prepare("SELECT sellable_item_id FROM shop_order_items WHERE id=?")
+			.bind(orderItemId)
+			.first<{ sellable_item_id: string }>();
+		const sku = item ? (await saleComponents(db))[item.sellable_item_id] : null;
+		if (!sku) return;
+		const codes = plaintext.match(ownedCodePattern(sku)) ?? [];
+		if (codes.length === 0) return;
+		const token = await loadDeliveryWarehouseToken(db, commerceSecret);
+		await requester(token, "/api/internal/faka/sold", {
+			method: "POST",
+			body: JSON.stringify({
+				code_hashes: await Promise.all(
+					codes.map((code) => sha256Hex(code.toLowerCase())),
+				),
+			}),
+		});
+	} catch {
+		// The warehouse still buys on demand when the customer redeems.
+	}
+}
+
 export async function saleComponents(db: D1Database) {
 	const row = await db
 		.prepare(
@@ -52,14 +95,7 @@ export async function refreshSaleCapacity(
 ) {
 	const sku = (await saleComponents(db))[component];
 	if (!sku) return null;
-	const prefixes = [
-		sku.toLowerCase().replaceAll("_", "-"),
-		...(LEGACY_CODE_PREFIXES[sku] ?? []),
-	];
-	const codePattern = new RegExp(
-		`(?:${prefixes.join("|")})-[A-Z2-9]{4}(?:-[A-Z2-9]{4}){3}`,
-		"gi",
-	);
+	const codePattern = ownedCodePattern(sku);
 	const secret = commerceSecret ?? (await loadRuntimeConfig(db)).commerceSecret;
 	await db
 		.prepare(

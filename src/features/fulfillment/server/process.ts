@@ -5,6 +5,7 @@ import {
 	type ConvertibleStock,
 	convertReservedStock,
 } from "#/features/redeem-warehouse/server/convert-delivery";
+import { notifyWarehouseSale } from "#/features/redeem-warehouse/server/sale-capacity";
 import { loadDeliveryWarehouseToken } from "#/features/redeem-warehouse/server/warehouse-client";
 import { DomainError } from "#/lib/domain-error";
 import { decryptSecret } from "#/lib/secrets";
@@ -48,6 +49,7 @@ export async function processDelivery(db: D1Database, deliveryId: string) {
 		);
 	const now = Date.now();
 	let contentEncrypted = delivery.content_encrypted;
+	let soldPlaintext: string | null = null;
 	if (delivery.delivery_type === "stock") {
 		const runtime = await loadRuntimeConfig(db);
 		if (!runtime.commerceSecret)
@@ -115,8 +117,9 @@ export async function processDelivery(db: D1Database, deliveryId: string) {
 				),
 			);
 		}
+		soldPlaintext = plaintext.join("\n");
 		contentEncrypted = await encryptDeliveryContent(
-			plaintext.join("\n"),
+			soldPlaintext,
 			runtime.commerceSecret,
 		);
 	}
@@ -238,6 +241,16 @@ export async function processDelivery(db: D1Database, deliveryId: string) {
 
 	if (Number(results[0]?.meta.changes ?? 0) < 1)
 		return { id: delivery.id, status: "delivered", duplicate: true };
+	if (soldPlaintext) {
+		const runtime = await loadRuntimeConfig(db);
+		if (runtime.commerceSecret)
+			await notifyWarehouseSale(
+				db,
+				delivery.order_item_id,
+				soldPlaintext,
+				runtime.commerceSecret,
+			);
+	}
 	return {
 		id: delivery.id,
 		status: "delivered",
