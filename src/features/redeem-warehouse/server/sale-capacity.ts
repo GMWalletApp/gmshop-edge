@@ -43,6 +43,7 @@ const assignmentSchema = z.object({
 				source: z.string(),
 				costMinor: z.string().nullable().optional(),
 				tradeNo: z.string().nullable().optional(),
+				balanceAfter: z.string().nullable().optional(),
 				reason: z.string().optional(),
 			}),
 		),
@@ -112,7 +113,9 @@ export async function notifyWarehouseSale(
 						id,
 						result.source === "faka" ? "warehouse_bought" : "warehouse_stock",
 						result.costMinor,
-						result.tradeNo ? `86订单 ${result.tradeNo}` : null,
+						result.tradeNo
+							? `86订单 ${result.tradeNo}${balanceLine(result.balanceAfter, result.costMinor)}`
+							: null,
 					);
 				return mark(
 					id,
@@ -129,6 +132,14 @@ export async function notifyWarehouseSale(
 			)
 			.catch(() => undefined);
 	}
+}
+
+// "｜86余额 ¥1864.00→¥1742.00": the balance was read right after this purchase.
+function balanceLine(after: string | null | undefined, costMinor: string) {
+	const afterYuan = Number(after);
+	if (after == null || after === "" || !Number.isFinite(afterYuan)) return "";
+	const before = afterYuan + Number(costMinor) / 100;
+	return `｜86余额 ¥${before.toFixed(2)}→¥${afterYuan.toFixed(2)}`;
 }
 
 export async function saleComponents(db: D1Database) {

@@ -442,6 +442,7 @@ describe.each([
 								source: "faka",
 								costMinor: "12200",
 								tradeNo: "503426098423060557",
+								balanceAfter: "1742",
 							},
 						],
 					},
@@ -459,7 +460,7 @@ describe.each([
 		).toEqual({
 			unit_cost_minor: "12200",
 			cost_source: "warehouse_bought",
-			cost_note: "86订单 503426098423060557",
+			cost_note: "86订单 503426098423060557｜86余额 ¥1864.00→¥1742.00",
 		});
 	});
 
