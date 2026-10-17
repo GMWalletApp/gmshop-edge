@@ -5,6 +5,9 @@ import { publishPendingDeliveries } from "#/features/fulfillment/server/outbox";
 import { publishPendingNotifications } from "#/features/notifications/server/delivery";
 import { fanOutPendingCommerceNotifications } from "#/features/notifications/server/fanout";
 import { publishPendingOwnerSaleAlerts } from "#/features/notifications/server/owner-sale-alerts";
+import { runBalanceGuard } from "#/features/ops-automation/server/balance-guard";
+import { runPricingGuard } from "#/features/ops-automation/server/pricing-guard";
+import { runWeeklyReport } from "#/features/ops-automation/server/weekly-report";
 import { settlePromotionRewards } from "#/features/promotions/server/balance";
 import { runRedemptionExceptionTodos } from "#/features/redeem-warehouse/server/exception-todos";
 import { runRenewalReminders } from "#/features/renewals/server/scheduler";
@@ -95,7 +98,24 @@ export async function runScheduledCommerceWork(
 	const renewals = await runRenewalReminders(env.DB, {
 		now: scheduledAt,
 	}).catch(() => ({ status: "failed" as const }));
+	// Owner automation (balance guard, pricing guard, weekly report): each is
+	// off by default, self-throttled per Beijing period and isolated from the rest.
+	const balanceGuard = await runBalanceGuard({
+		db: env.DB,
+		now: scheduledAt,
+	}).catch(() => ({ status: "failed" as const }));
+	const pricingGuard = await runPricingGuard({
+		db: env.DB,
+		now: scheduledAt,
+	}).catch(() => ({ status: "failed" as const }));
+	const weeklyReport = await runWeeklyReport({
+		db: env.DB,
+		now: scheduledAt,
+	}).catch(() => ({ status: "failed" as const }));
 	return {
+		balanceGuard,
+		pricingGuard,
+		weeklyReport,
 		agentAccess,
 		promotionRewards,
 		payments,
