@@ -292,7 +292,9 @@ export function AgentAccessDrafts() {
 					key={p.productId}
 					href={`/admin/products/${p.productId}`}
 				>
-					{p.priceMinor === "990" ? "API · ¥9.90" : "Subsite · ¥199"}
+					{p.priceMinor === agentAccessProducts.api.priceMinor
+						? "API · ¥19.90"
+						: "Subsite · ¥199"}
 				</a>
 			))}
 		</section>

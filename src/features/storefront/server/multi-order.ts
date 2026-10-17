@@ -1,4 +1,7 @@
-import { agentAccessKind } from "#/features/agent-access/products";
+import {
+	agentAccessKind,
+	agentAccessProducts,
+} from "#/features/agent-access/products";
 import {
 	agentCheckoutStatement,
 	prepareAgentCheckout,
@@ -246,7 +249,7 @@ export async function createMultiStoreOrder(
 		agentCheckout &&
 		(discount !== 0n ||
 			lines[0]?.sellableItem.price_minor !==
-				(agentCheckout.kind === "subsite" ? "19900" : "990"))
+				agentAccessProducts[agentCheckout.kind].priceMinor)
 	)
 		throw new DomainError(
 			"agent_access_price_invalid",

@@ -344,7 +344,9 @@ describe("paid agent access", { timeout: 30000 }, () => {
 			.first<string>("balance_minor");
 		expect(await reserveOrderBalance(db, order.id, userId)).toMatchObject({
 			reward_minor: "500",
-			cash_minor: "490",
+			cash_minor: (
+				BigInt(agentAccessProducts.api.priceMinor) - 500n
+			).toString(),
 			external_minor: "0",
 		});
 		await completeFreeStoreOrder(db, order.id, userId);
@@ -366,7 +368,7 @@ describe("paid agent access", { timeout: 30000 }, () => {
 			db,
 			{
 				orderId: order.id,
-				amountMinor: "990",
+				amountMinor: agentAccessProducts.api.priceMinor,
 				reason: "Verified activation failure",
 				idempotencyKey: "combined-reward-agent-refund",
 			},
@@ -401,7 +403,7 @@ describe("paid agent access", { timeout: 30000 }, () => {
 			db,
 			{
 				orderId: order.id,
-				amountMinor: "990",
+				amountMinor: agentAccessProducts.api.priceMinor,
 				reason: "test fixture",
 				idempotencyKey: "refund-access-test",
 			},
