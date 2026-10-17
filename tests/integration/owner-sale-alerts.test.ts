@@ -2,6 +2,7 @@ import { Miniflare } from "miniflare";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	formatFeishuOwnerSaleAlert,
+	formatStockLines,
 	publishPendingOwnerSaleAlerts,
 } from "#/features/notifications/server/owner-sale-alerts";
 import { applyMigrations } from "./migrations";
@@ -247,6 +248,10 @@ describe("owner sale alerts", { timeout: 30_000 }, () => {
 				db,
 				now,
 				readBalance: async () => null,
+				readWarehouse: async () => ({
+					balance: "1620.5",
+					skus: { GPT_PLUS_IOS: { available: 0, autoRestock: true } },
+				}),
 				deliver: async (text) => {
 					messages.push(text);
 				},
@@ -264,6 +269,9 @@ describe("owner sale alerts", { timeout: 30_000 }, () => {
 		);
 		expect(messages[0]).toContain("成本：¥122.00");
 		expect(messages[0]).not.toContain("¥100.00");
+		expect(messages[0]).toContain(
+			"卖出后库存：\n· ChatGPT会员 · Plus菲区：前台可售 0｜真实凭证 0（用完自动从 86 进货）\n86 余额：¥1620.50",
+		);
 	});
 
 	it("flags a failed 86 restock and never guesses the cost", async () => {
@@ -508,4 +516,44 @@ it("names the sub-site, its parent order and the real customer", () => {
 	expect(main).toContain("💰 新订单｜代理站 lsrai.shop");
 	expect(main).toContain("代理站订单：DJ20261016005006527976\n");
 	expect(main).not.toContain("子站");
+});
+
+it("shows storefront codes, real 86 credentials and a low-stock warning", () => {
+	const item = {
+		fulfillment_source: "local",
+		low_stock_threshold: 2,
+	};
+	expect(
+		formatStockLines(
+			[
+				{
+					...item,
+					name: "Claude · Pro",
+					front_available: 92,
+					redeem_sku: "CLAUDE_PRO_IOS",
+				},
+				{
+					...item,
+					name: "算力卡 · ¥50",
+					front_available: 29,
+					redeem_sku: null,
+				},
+				{
+					...item,
+					name: "Plus · 菲区",
+					front_available: 68,
+					redeem_sku: "GPT_PLUS_PH",
+				},
+			],
+			{
+				balance: "1742",
+				skus: { CLAUDE_PRO_IOS: { available: 1, autoRestock: false } },
+			},
+		),
+	).toEqual([
+		"· Claude · Pro：前台可售 92｜真实凭证 1 ⚠️",
+		"· 算力卡 · ¥50：剩余卡密 29",
+		"· Plus · 菲区：前台可售 68｜真实凭证 读取失败 ⚠️",
+		"86 余额：¥1742.00",
+	]);
 });

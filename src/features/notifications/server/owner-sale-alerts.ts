@@ -1,3 +1,9 @@
+import { z } from "zod";
+import { saleComponents } from "#/features/redeem-warehouse/server/sale-capacity";
+import {
+	loadDeliveryWarehouseToken,
+	requestWarehouse,
+} from "#/features/redeem-warehouse/server/warehouse-client";
 import { paymentProcessingFeeAmount } from "#/features/shop-payments/fees";
 import {
 	adapterForSupplierAccount,
@@ -62,6 +68,20 @@ type Balance = {
 	fresh: boolean;
 };
 
+// Real 86 vault state, read once per alert after the sale.
+export type WarehouseSnapshot = {
+	balance: string | null;
+	skus: Record<string, { available: number; autoRestock: boolean }>;
+};
+
+type StockItem = {
+	name: string;
+	fulfillment_source: string;
+	front_available: number;
+	low_stock_threshold: number;
+	redeem_sku: string | null;
+};
+
 export async function publishPendingOwnerSaleAlerts(input: {
 	db: D1Database;
 	limit?: number;
@@ -69,6 +89,7 @@ export async function publishPendingOwnerSaleAlerts(input: {
 	fetcher?: typeof fetch;
 	deliver?: (text: string) => Promise<void>;
 	readBalance?: () => Promise<Balance | null>;
+	readWarehouse?: () => Promise<WarehouseSnapshot | null>;
 }) {
 	const now = input.now ?? Date.now();
 	const limit = Math.max(1, Math.min(100, Math.trunc(input.limit ?? 25)));
@@ -265,7 +286,13 @@ export async function publishPendingOwnerSaleAlerts(input: {
 			const balance = input.readBalance
 				? await input.readBalance()
 				: await readAisouBalance(input.db, now, input.fetcher ?? fetch);
-			const text = formatFeishuOwnerSaleAlert(row, balance, now);
+			const stock = await stockLines(
+				input.db,
+				row.aggregate_id,
+				input.readWarehouse ??
+					(() => readWarehouse(input.db, input.fetcher ?? fetch)),
+			);
+			const text = formatFeishuOwnerSaleAlert(row, balance, now, stock);
 			if (input.deliver) await input.deliver(text);
 			else {
 				const credentials = await resolveFeishuAlertCredentials(input.db, {
@@ -316,6 +343,7 @@ export function formatFeishuOwnerSaleAlert(
 	> & { event_created_at?: number },
 	balance: Balance | null,
 	now = Date.now(),
+	stock: string[] = [],
 ) {
 	const sources = (row.owned_cost_sources ?? "").split(",").filter(Boolean);
 	const notes = row.owned_cost_notes ?? "";
@@ -444,10 +472,114 @@ export function formatFeishuOwnerSaleAlert(
 		`利润：${profit}${internal ? "（主站这一层）" : ""}`,
 		...(delivery ? [delivery] : []),
 		...(purchaseWallet ? [`采购钱包余额：${purchaseWallet}`] : []),
+		...(stock.length ? ["", "卖出后库存：", ...stock] : []),
 		"",
 		...orderLines,
 		`时间：${time}`,
 	].join("\n");
+}
+
+// One line per sold SKU: storefront codes left, plus the real 86 credentials behind them.
+// Supplier-sourced SKUs are bought per order, so their wallet balance line already covers them.
+export async function stockLines(
+	db: D1Database,
+	orderId: string,
+	readSnapshot: () => Promise<WarehouseSnapshot | null>,
+) {
+	const components = await saleComponents(db).catch(
+		() => ({}) as Record<string, string>,
+	);
+	const items = await db
+		.prepare(
+			`SELECT MIN(item.product_name || ' · ' || item.sellable_item_name) AS name,
+			        sellable.id AS sellable_id, sellable.fulfillment_source,
+			        sellable.low_stock_threshold,
+			        (SELECT COUNT(*) FROM stock_entries left_stock
+			         WHERE left_stock.sellable_item_id = sellable.id
+			          AND left_stock.status = 'available') AS front_available
+			 FROM shop_order_items item
+			 JOIN product_sellable_items sellable ON sellable.id = item.sellable_item_id
+			 WHERE item.order_id = ? AND sellable.fulfillment_source = 'local'
+			 GROUP BY sellable.id ORDER BY MIN(item.id)`,
+		)
+		.bind(orderId)
+		.all<Omit<StockItem, "redeem_sku"> & { sellable_id: string }>();
+	const rows: StockItem[] = items.results.map((item) => ({
+		...item,
+		redeem_sku: components[item.sellable_id] ?? null,
+	}));
+	if (rows.length === 0) return [];
+	const snapshot = rows.some((item) => item.redeem_sku)
+		? await readSnapshot().catch(() => null)
+		: null;
+	return formatStockLines(rows, snapshot);
+}
+
+export function formatStockLines(
+	rows: StockItem[],
+	snapshot: WarehouseSnapshot | null,
+) {
+	const lines: string[] = [];
+	for (const item of rows) {
+		// Most SKUs keep threshold 0; still warn while two or fewer remain.
+		const low = (count: number) =>
+			count <= Math.max(item.low_stock_threshold, 2) ? " ⚠️" : "";
+		if (!item.redeem_sku) {
+			lines.push(
+				`· ${item.name}：剩余卡密 ${item.front_available}${low(item.front_available)}`,
+			);
+			continue;
+		}
+		const real = snapshot?.skus[item.redeem_sku];
+		const realText = !real
+			? "真实凭证 读取失败 ⚠️"
+			: real.autoRestock
+				? `真实凭证 ${real.available}（用完自动从 86 进货）`
+				: `真实凭证 ${real.available}${low(real.available)}`;
+		lines.push(`· ${item.name}：前台可售 ${item.front_available}｜${realText}`);
+	}
+	if (rows.some((item) => item.redeem_sku))
+		lines.push(
+			`86 余额：${snapshot?.balance != null ? `¥${Number(snapshot.balance).toFixed(2)}` : "读取失败"}`,
+		);
+	return lines;
+}
+
+const warehouseSummarySchema = z.object({
+	success: z.literal(true),
+	faka_balance: z.union([z.string(), z.number()]).nullable().optional(),
+	data: z.array(
+		z.object({
+			sku: z.string(),
+			available: z.number().int().nonnegative(),
+			auto_restock: z.boolean().optional(),
+		}),
+	),
+});
+
+async function readWarehouse(
+	db: D1Database,
+	fetcher: typeof fetch,
+): Promise<WarehouseSnapshot> {
+	const { commerceSecret } = await loadRuntimeConfig(db);
+	const token = await loadDeliveryWarehouseToken(db, commerceSecret);
+	const body = warehouseSummarySchema.parse(
+		await requestWarehouse(
+			token,
+			"/api/internal/inventory/summary?balance=1",
+			{},
+			fetcher,
+		),
+	);
+	return {
+		balance: body.faka_balance == null ? null : String(body.faka_balance),
+		skus: Object.fromEntries(
+			body.data.map((row) => [
+				row.sku,
+				{ available: row.available, autoRestock: row.auto_restock ?? false },
+			]),
+		),
+	};
 }
 
 async function readAisouBalance(
