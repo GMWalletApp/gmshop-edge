@@ -20,17 +20,27 @@ globalThis.ResizeObserver ??= class {
 const mocks = vi.hoisted(() => ({
 	getTelegramSettingsFn: vi.fn(),
 	saveFeishuAlertSettingsFn: vi.fn(async () => ({ saved: true })),
+	saveTelegramOwnerAlertSettingsFn: vi.fn(async () => ({ saved: true })),
 	saveTelegramSettingsFn: vi.fn(async () => ({ saved: true })),
 	syncTelegramBotFn: vi.fn(),
 	testFeishuAlertFn: vi.fn(async () => ({ sent: true })),
+	testTelegramOwnerAlertFn: vi.fn(async () => ({ sent: true })),
+	verifyTelegramOwnerAlertFn: vi.fn(async () => ({
+		verified: true,
+		type: "supergroup",
+		title: "Owner",
+	})),
 }));
 
 vi.mock("#/features/telegram/server/admin", () => ({
 	getTelegramSettingsFn: mocks.getTelegramSettingsFn,
 	saveFeishuAlertSettingsFn: mocks.saveFeishuAlertSettingsFn,
+	saveTelegramOwnerAlertSettingsFn: mocks.saveTelegramOwnerAlertSettingsFn,
 	saveTelegramSettingsFn: mocks.saveTelegramSettingsFn,
 	syncTelegramBotFn: mocks.syncTelegramBotFn,
 	testFeishuAlertFn: mocks.testFeishuAlertFn,
+	testTelegramOwnerAlertFn: mocks.testTelegramOwnerAlertFn,
+	verifyTelegramOwnerAlertFn: mocks.verifyTelegramOwnerAlertFn,
 }));
 
 const settings = {
@@ -74,6 +84,13 @@ const settings = {
 		lastSentAt: null,
 		lastErrorCode: null,
 	},
+	ownerTelegramAlerts: {
+		enabled: false,
+		chatId: "-5101401750",
+		hasBotToken: true,
+		lastSentAt: null,
+		lastErrorCode: null,
+	},
 };
 
 describe("telegram settings page", () => {
@@ -91,6 +108,48 @@ describe("telegram settings page", () => {
 		await act(async () => root.unmount());
 		container.remove();
 		vi.clearAllMocks();
+	});
+
+	it("saves Telegram owner alerts without resending the write-only bot token", async () => {
+		const queryClient = new QueryClient({
+			defaultOptions: {
+				mutations: { retry: false },
+				queries: { retry: false },
+			},
+		});
+		await act(async () => {
+			root.render(
+				<QueryClientProvider client={queryClient}>
+					<TelegramSettingsPage />
+				</QueryClientProvider>,
+			);
+		});
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		});
+		const trigger = Array.from(container.querySelectorAll("button")).find(
+			(button) =>
+				button.textContent?.includes(m.telegram_owner_alerts_action()),
+		);
+		expect(trigger).toBeDefined();
+		await act(async () => trigger?.click());
+		const tokenInput = document.body.querySelector<HTMLInputElement>(
+			'input[type="password"]',
+		);
+		expect(tokenInput?.value).toBe("");
+		expect(tokenInput?.placeholder).toBe(m.settings_secret_configured());
+		const enabledSwitch = document.body.querySelector<HTMLButtonElement>(
+			`[data-slot="switch"][aria-label="${m.telegram_owner_alerts_enabled()}"]`,
+		);
+		expect(enabledSwitch).not.toBeNull();
+		await act(async () => enabledSwitch?.click());
+		await act(async () => {
+			document.body.querySelector("form")?.requestSubmit();
+		});
+		expect(mocks.saveTelegramOwnerAlertSettingsFn).toHaveBeenCalledWith({
+			data: { enabled: true, chatId: "-5101401750" },
+		});
+		expect(mocks.saveFeishuAlertSettingsFn).not.toHaveBeenCalled();
 	});
 
 	it("submits the support switch as a boolean when enabling support", async () => {

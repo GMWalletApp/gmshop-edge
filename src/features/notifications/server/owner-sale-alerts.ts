@@ -11,11 +11,9 @@ import {
 } from "#/features/suppliers/server/account-runtime";
 import { claimSupplierApiBudget } from "#/features/suppliers/server/rate-limit";
 import {
-	feishuAlertErrorCode,
-	recordFeishuAlertResult,
-	resolveFeishuAlertCredentials,
-	sendFeishuText,
-} from "#/features/telegram/server/feishu-alerts";
+	deliverOwnerAlert,
+	ownerAlertErrorCode,
+} from "#/features/telegram/server/owner-alerts";
 import { formatMinorAmountWithSymbol } from "#/lib/format";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 
@@ -300,14 +298,11 @@ export async function publishPendingOwnerSaleAlerts(input: {
 			);
 			const text = formatFeishuOwnerSaleAlert(row, balance, now, stock);
 			if (input.deliver) await input.deliver(text);
-			else {
-				const credentials = await resolveFeishuAlertCredentials(input.db, {
-					requireEnabled: false,
+			else
+				await deliverOwnerAlert(input.db, text, {
+					fetcher: input.fetcher,
+					uuid: row.id,
 				});
-				if (!credentials) throw new Error("feishu_configuration_unavailable");
-				await sendFeishuText(credentials, text, input.fetcher ?? fetch, row.id);
-				await recordFeishuAlertResult(input.db, { sent: true });
-			}
 			await input.db
 				.prepare(
 					`UPDATE outbox_events SET status = 'published', published_at = ?,
@@ -318,12 +313,7 @@ export async function publishPendingOwnerSaleAlerts(input: {
 				.run();
 			sent += 1;
 		} catch (error) {
-			const code = feishuAlertErrorCode(error);
-			if (!input.deliver)
-				await recordFeishuAlertResult(input.db, {
-					sent: false,
-					errorCode: code,
-				});
+			const code = ownerAlertErrorCode(error);
 			await retryOrFail(input.db, row, now, code, leaseUntil);
 			failed += 1;
 		}

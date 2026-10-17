@@ -1,18 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { publishAuthSecurityAlert } from "#/features/auth/server/security-alerts";
 import {
-	resolveFeishuAlertCredentials,
-	sendFeishuText,
-} from "#/features/telegram/server/feishu-alerts";
+	ownerAlertConfigured,
+	sendOwnerAlert,
+} from "#/features/telegram/server/owner-alerts";
 
-vi.mock("#/features/telegram/server/feishu-alerts", () => ({
-	resolveFeishuAlertCredentials: vi.fn(
-		async (_db: unknown, options?: { requireEnabled?: boolean }) =>
-			options?.requireEnabled === false
-				? { appId: "test", appSecret: "test", chatId: "test" }
-				: null,
-	),
-	sendFeishuText: vi.fn(async () => {}),
+vi.mock("#/features/telegram/server/owner-alerts", () => ({
+	ownerAlertConfigured: vi.fn(async () => true),
+	sendOwnerAlert: vi.fn(async () => ({ channel: "telegram" })),
 }));
 vi.mock("#/server/rate-limit", () => ({
 	claimFixedWindowRateLimit: vi.fn(async () => ({ allowed: true })),
@@ -44,11 +39,9 @@ describe("independent authentication security alerts", () => {
 		expect(await publishAuthSecurityAlert(db, 900000)).toEqual({
 			status: "sent",
 		});
-		expect(resolveFeishuAlertCredentials).toHaveBeenCalledWith(db, {
-			requireEnabled: false,
-		});
-		expect(sendFeishuText).toHaveBeenCalledTimes(1);
-		expect(vi.mocked(sendFeishuText).mock.calls[0]?.[1]).toContain(
+		expect(ownerAlertConfigured).toHaveBeenCalledWith(db);
+		expect(sendOwnerAlert).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(sendOwnerAlert).mock.calls[0]?.[1]).toContain(
 			"认证失败：10",
 		);
 	});
@@ -59,7 +52,7 @@ describe("independent authentication security alerts", () => {
 				900000,
 			),
 		).toEqual({ status: "disabled" });
-		expect(resolveFeishuAlertCredentials).not.toHaveBeenCalled();
-		expect(sendFeishuText).not.toHaveBeenCalled();
+		expect(ownerAlertConfigured).not.toHaveBeenCalled();
+		expect(sendOwnerAlert).not.toHaveBeenCalled();
 	});
 });

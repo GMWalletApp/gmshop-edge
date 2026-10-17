@@ -1,10 +1,8 @@
 import { z } from "zod";
 import {
-	feishuAlertErrorCode,
-	recordFeishuAlertResult,
-	resolveFeishuAlertCredentials,
-	sendFeishuText,
-} from "#/features/telegram/server/feishu-alerts";
+	deliverOwnerAlert,
+	ownerAlertErrorCode,
+} from "#/features/telegram/server/owner-alerts";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 import {
 	loadDeliveryWarehouseToken,
@@ -516,14 +514,7 @@ async function publishExceptionAlerts(
 				.bind(row.aggregate_id)
 				.run();
 			if (input.deliver) await input.deliver(payload.text, row.id);
-			else {
-				const credentials = await resolveFeishuAlertCredentials(input.db, {
-					requireEnabled: false,
-				});
-				if (!credentials) throw new Error("feishu_configuration_unavailable");
-				await sendFeishuText(credentials, payload.text, fetch, row.id);
-				await recordFeishuAlertResult(input.db, { sent: true }).catch(() => {});
-			}
+			else await deliverOwnerAlert(input.db, payload.text, { uuid: row.id });
 			await input.db
 				.prepare(`UPDATE outbox_events SET status='published',published_at=?,last_error_code=NULL,next_attempt_at=NULL,updated_at=?
         WHERE id=? AND status='pending' AND next_attempt_at=?`)
@@ -531,7 +522,7 @@ async function publishExceptionAlerts(
 				.run();
 			accepted++;
 		} catch (error) {
-			const code = feishuAlertErrorCode(error);
+			const code = ownerAlertErrorCode(error);
 			await input.db
 				.prepare(`UPDATE outbox_events SET status=CASE WHEN attempt_count>=3 THEN 'failed' ELSE 'pending' END,
         next_attempt_at=?,last_error_code=?,updated_at=? WHERE id=? AND status='pending' AND next_attempt_at=?`)

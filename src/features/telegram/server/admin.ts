@@ -24,6 +24,19 @@ import {
 	upsertFeishuAlertSetting,
 	verifyFeishuAppBot,
 } from "./feishu-alerts";
+import {
+	encryptTelegramOwnerAlertBotToken,
+	loadTelegramOwnerAlertSettings,
+	OwnerAlertError,
+	ownerAlertErrorCode,
+	recordTelegramOwnerAlertResult,
+	resolveTelegramOwnerAlertCredentials,
+	sendTelegramOwnerAlertText,
+	type TelegramOwnerAlertCredentials,
+	telegramOwnerAlertSettingKeys,
+	telegramOwnerAlertSettingsInputSchema,
+	verifyTelegramOwnerAlertChat,
+} from "./owner-alerts";
 import { synchronizeSupportAdministrators } from "./support-admins";
 import { synchronizeTelegramBot, telegramRuntime } from "./sync";
 
@@ -32,25 +45,27 @@ export const getTelegramSettingsFn = createServerFn({ method: "GET" }).handler(
 		const { db } = await telegramAdminContext("read");
 		const { runtime, settings, provider } = await telegramRuntime(db);
 		const webhookUrl = safeWebhookUrl(runtime.betterAuthUrl);
-		const [counts, webhookHealth, feishuAlerts] = await Promise.all([
-			db
-				.prepare(
-					`SELECT
+		const [counts, webhookHealth, feishuAlerts, ownerTelegramAlerts] =
+			await Promise.all([
+				db
+					.prepare(
+						`SELECT
 					 (SELECT count(*) FROM telegram_support_conversations WHERE status = 'active') +
 					 (SELECT count(*) FROM telegram_web_support_conversations WHERE status = 'active') AS active_count,
 				 (SELECT count(*) FROM telegram_support_administrators WHERE support_chat_id = ?) AS administrator_count,
 				 (SELECT max(updated_at) FROM replay_receipts
 				  WHERE namespace = 'telegram_update' AND scope_id = ?) AS last_update_at`,
-				)
-				.bind(settings.supportChatId, settings.syncedBotUserId)
-				.first<{
-					active_count: number;
-					administrator_count: number;
-					last_update_at: number | null;
-				}>(),
-			inspectWebhook(provider?.telegramBotToken, webhookUrl),
-			loadFeishuAlertSettings(db),
-		]);
+					)
+					.bind(settings.supportChatId, settings.syncedBotUserId)
+					.first<{
+						active_count: number;
+						administrator_count: number;
+						last_update_at: number | null;
+					}>(),
+				inspectWebhook(provider?.telegramBotToken, webhookUrl),
+				loadFeishuAlertSettings(db),
+				loadTelegramOwnerAlertSettings(db),
+			]);
 		return {
 			...settings,
 			botName: settings.syncedBotName ?? provider?.displayName ?? null,
@@ -64,6 +79,7 @@ export const getTelegramSettingsFn = createServerFn({ method: "GET" }).handler(
 			activeConversationCount: Number(counts?.active_count ?? 0),
 			administratorCount: Number(counts?.administrator_count ?? 0),
 			feishuAlerts,
+			ownerTelegramAlerts,
 		};
 	},
 );
@@ -190,6 +206,144 @@ export const testFeishuAlertFn = createServerFn({ method: "POST" })
 			});
 			throw new DomainError(code, 409, "Feishu test delivery failed");
 		}
+	});
+
+async function storedTelegramOwnerAlertCredentials(db: D1Database) {
+	return resolveTelegramOwnerAlertCredentials(db, {
+		requireEnabled: false,
+	}).catch((error) => {
+		if (error instanceof OwnerAlertError) return null;
+		throw error;
+	});
+}
+
+async function verifiedTelegramOwnerAlertChat(
+	credentials: TelegramOwnerAlertCredentials,
+) {
+	try {
+		return await verifyTelegramOwnerAlertChat(credentials);
+	} catch (error) {
+		throw new DomainError(
+			ownerAlertErrorCode(error),
+			409,
+			"Telegram owner alert chat verification failed",
+		);
+	}
+}
+
+export const saveTelegramOwnerAlertSettingsFn = createServerFn({
+	method: "POST",
+})
+	.validator((input: z.input<typeof telegramOwnerAlertSettingsInputSchema>) =>
+		telegramOwnerAlertSettingsInputSchema.parse(input),
+	)
+	.handler(async ({ data }) => {
+		const context = await telegramAdminContext("update");
+		const { db } = context;
+		const stored = await storedTelegramOwnerAlertCredentials(db);
+		const botToken = data.botToken ?? stored?.botToken;
+		const candidate =
+			data.chatId && botToken ? { chatId: data.chatId, botToken } : null;
+		if (data.enabled && !candidate)
+			throw new DomainError(
+				"telegram_alert_configuration_required",
+				400,
+				"Telegram bot token and chat ID are required",
+			);
+		if (data.enabled && candidate)
+			await verifiedTelegramOwnerAlertChat(candidate);
+		const now = Date.now();
+		await db.batch([
+			upsertFeishuAlertSetting(
+				db,
+				telegramOwnerAlertSettingKeys.enabled,
+				data.enabled,
+				now,
+			),
+			upsertFeishuAlertSetting(
+				db,
+				telegramOwnerAlertSettingKeys.chatId,
+				data.chatId,
+				now,
+			),
+			...(data.botToken
+				? [
+						upsertFeishuAlertSetting(
+							db,
+							telegramOwnerAlertSettingKeys.botToken,
+							await encryptTelegramOwnerAlertBotToken(db, data.botToken),
+							now,
+							true,
+						),
+					]
+				: []),
+			auditStatement(context, "telegram.owner_alerts.updated", now, {
+				enabled: data.enabled,
+				botTokenConfigured: Boolean(botToken),
+				botTokenChanged: Boolean(data.botToken),
+				chatIdConfigured: Boolean(data.chatId),
+			}),
+		]);
+		return { saved: true };
+	});
+
+async function requireStoredTelegramOwnerAlertCredentials(db: D1Database) {
+	const credentials = await storedTelegramOwnerAlertCredentials(db);
+	if (!credentials)
+		throw new DomainError(
+			"telegram_alert_configuration_required",
+			400,
+			"Telegram bot token and chat ID are required",
+		);
+	return credentials;
+}
+
+export const verifyTelegramOwnerAlertFn = createServerFn({ method: "POST" })
+	.validator(() => undefined)
+	.handler(async () => {
+		const context = await telegramAdminContext("update");
+		const credentials = await requireStoredTelegramOwnerAlertCredentials(
+			context.db,
+		);
+		const chat = await verifiedTelegramOwnerAlertChat(credentials);
+		await auditStatement(
+			context,
+			"telegram.owner_alerts.verified",
+			Date.now(),
+			{ type: chat.type },
+		).run();
+		return chat;
+	});
+
+export const testTelegramOwnerAlertFn = createServerFn({ method: "POST" })
+	.validator(() => undefined)
+	.handler(async () => {
+		const context = await telegramAdminContext("update");
+		const credentials = await requireStoredTelegramOwnerAlertCredentials(
+			context.db,
+		);
+		try {
+			await sendTelegramOwnerAlertText(
+				credentials,
+				`✅ 老板提醒测试\n时间：${new Intl.DateTimeFormat("zh-CN", {
+					timeZone: "Asia/Shanghai",
+					dateStyle: "medium",
+					timeStyle: "short",
+				}).format(Date.now())}（北京时间）\n结果：Telegram 私密群已连通。`,
+			);
+		} catch (error) {
+			const code = ownerAlertErrorCode(error);
+			await recordTelegramOwnerAlertResult(context.db, {
+				sent: false,
+				errorCode: code,
+			});
+			throw new DomainError(code, 409, "Telegram test delivery failed");
+		}
+		await recordTelegramOwnerAlertResult(context.db, { sent: true });
+		await auditStatement(context, "telegram.owner_alerts.tested", Date.now(), {
+			sent: true,
+		}).run();
+		return { sent: true };
 	});
 
 export const saveTelegramSettingsFn = createServerFn({ method: "POST" })

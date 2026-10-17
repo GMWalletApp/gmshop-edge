@@ -16,9 +16,12 @@ import { m } from "#/paraglide/messages";
 import {
 	getTelegramSettingsFn,
 	saveFeishuAlertSettingsFn,
+	saveTelegramOwnerAlertSettingsFn,
 	saveTelegramSettingsFn,
 	syncTelegramBotFn,
 	testFeishuAlertFn,
+	testTelegramOwnerAlertFn,
+	verifyTelegramOwnerAlertFn,
 } from "../server/admin";
 
 const queryKey = ["admin", "telegram-settings"] as const;
@@ -46,6 +49,10 @@ export function TelegramSettingsPage() {
 						{data ? (
 							<>
 								<SupportSettingsModal data={data} onSaved={refresh} />
+								<OwnerTelegramAlertSettingsModal
+									data={data}
+									onSaved={refresh}
+								/>
 								<FeishuAlertSettingsModal data={data} onSaved={refresh} />
 								<SyncSettingsModal
 									data={data}
@@ -79,6 +86,133 @@ export function TelegramSettingsPage() {
 				/>
 			</div>
 		</div>
+	);
+}
+
+function OwnerTelegramAlertSettingsModal({
+	data,
+	onSaved,
+}: {
+	data: Awaited<ReturnType<typeof getTelegramSettingsFn>>;
+	onSaved: () => Promise<unknown>;
+}) {
+	const afterSave = useRef<"verify" | "test" | null>(null);
+	const settings = data.ownerTelegramAlerts;
+	return (
+		<ModalForm
+			title={m.telegram_owner_alerts_title()}
+			description={m.telegram_owner_alerts_description()}
+			trigger={
+				<ProButton variant="outline">
+					<BellRing />
+					{m.telegram_owner_alerts_action()}
+				</ProButton>
+			}
+			schema={[
+				{
+					name: "enabled",
+					label: m.telegram_owner_alerts_enabled(),
+					tooltip: m.telegram_owner_alerts_description(),
+					valueType: "switch" as const,
+					required: true,
+					render: switchField(m.telegram_owner_alerts_enabled()),
+					formItemProps: { className: "md:col-span-2" },
+				},
+				{
+					name: "chatId",
+					label: m.telegram_owner_alerts_chat_id(),
+					required: false,
+					description: m.telegram_owner_alerts_chat_id_description(),
+					fieldProps: { placeholder: "-5101401750", inputMode: "numeric" },
+					formItemProps: { className: "md:col-span-2" },
+				},
+				{
+					name: "botToken",
+					label: m.telegram_owner_alerts_bot_token(),
+					valueType: "password" as const,
+					required: false,
+					description: m.telegram_owner_alerts_bot_token_description(),
+					fieldProps: {
+						placeholder: settings.hasBotToken
+							? m.settings_secret_configured()
+							: "123456789:AA...",
+						autoComplete: "off",
+					},
+					formItemProps: { className: "md:col-span-2" },
+				},
+			]}
+			initialValues={{
+				enabled: settings.enabled,
+				chatId: settings.chatId ?? "",
+				botToken: "",
+			}}
+			fieldsClassName="grid grid-cols-1 gap-5 space-y-0 md:grid-cols-2"
+			submitter={({ submitting }) => (
+				<>
+					<ProButton
+						type="submit"
+						variant="outline"
+						disabled={submitting}
+						loading={submitting && afterSave.current === "test"}
+						onClick={() => {
+							afterSave.current = "test";
+						}}
+					>
+						<BellRing />
+						{m.telegram_owner_alerts_test()}
+					</ProButton>
+					<ProButton
+						type="submit"
+						variant="outline"
+						disabled={submitting}
+						loading={submitting && afterSave.current === "verify"}
+						onClick={() => {
+							afterSave.current = "verify";
+						}}
+					>
+						{m.telegram_owner_alerts_verify()}
+					</ProButton>
+					<ProButton
+						type="submit"
+						disabled={submitting}
+						loading={submitting && afterSave.current === null}
+						onClick={() => {
+							afterSave.current = null;
+						}}
+					>
+						{m.settings_save_changes()}
+					</ProButton>
+				</>
+			)}
+			onFinish={async (values) => {
+				try {
+					const botToken = String(values.botToken ?? "").trim();
+					await saveTelegramOwnerAlertSettingsFn({
+						data: {
+							enabled: formBooleanValue(values.enabled),
+							chatId: String(values.chatId ?? "").trim() || null,
+							...(botToken ? { botToken } : {}),
+						},
+					});
+					await onSaved();
+					if (afterSave.current === "verify") {
+						const chat = await verifyTelegramOwnerAlertFn();
+						toast.success(
+							m.telegram_owner_alerts_verified({
+								title: chat.title ?? chat.type,
+							}),
+						);
+					} else if (afterSave.current === "test") {
+						await testTelegramOwnerAlertFn();
+						await onSaved();
+						toast.success(m.telegram_owner_alerts_test_succeeded());
+					} else toast.success(m.settings_saved());
+				} finally {
+					afterSave.current = null;
+				}
+			}}
+			onFinishFailed={(error) => toast.error(settingsErrorMessage(error))}
+		/>
 	);
 }
 
@@ -488,6 +622,24 @@ function supportStatusItems(
 					? m.telegram_support_status_enabled()
 					: m.telegram_support_status_disabled()
 				: undefined,
+		},
+		{
+			label: m.telegram_owner_alerts_enabled(),
+			value: data
+				? data.ownerTelegramAlerts.enabled
+					? m.telegram_support_status_enabled()
+					: m.telegram_support_status_disabled()
+				: "—",
+		},
+		{
+			label: m.telegram_owner_alerts_last_delivery(),
+			value: data?.ownerTelegramAlerts.lastErrorCode
+				? m.telegram_feishu_delivery_failed({
+						code: data.ownerTelegramAlerts.lastErrorCode,
+					})
+				: data?.ownerTelegramAlerts.lastSentAt
+					? formatDateTime(data.ownerTelegramAlerts.lastSentAt)
+					: m.telegram_feishu_not_sent(),
 		},
 		{
 			label: m.telegram_feishu_alerts_enabled(),

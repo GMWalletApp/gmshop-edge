@@ -13,14 +13,9 @@ import {
 	type webSupportConversationSchema,
 	type webSupportMessageSchema,
 } from "../web-support-contract";
-import {
-	feishuAlertErrorCode,
-	formatFeishuWebSupportAlert,
-	recordFeishuAlertResult,
-	resolveFeishuAlertCredentials,
-	sendFeishuText,
-} from "./feishu-alerts";
+import { formatFeishuWebSupportAlert } from "./feishu-alerts";
 import { supportEmailKeyboard } from "./manual-support-email";
+import { sendOwnerAlert } from "./owner-alerts";
 import { telegramDataKeyId } from "./secret";
 import {
 	completeSupportAwayReply,
@@ -386,7 +381,7 @@ export async function maybeReplyWebSupportAway(
 	}
 }
 
-// One Feishu ping per conversation per 5 minutes; the full thread is in Telegram.
+// One owner ping per conversation per 5 minutes; the full thread is in Telegram.
 const WEB_SUPPORT_FEISHU_QUIET_MS = 5 * 60_000;
 
 function scheduleFeishuWebSupportAlert(
@@ -406,18 +401,15 @@ function scheduleFeishuWebSupportAlert(
 				.bind(now, conversationId, now - WEB_SUPPORT_FEISHU_QUIET_MS)
 				.run();
 			if (Number(claimed.meta.changes ?? 0) !== 1) return;
-			const credentials = await resolveFeishuAlertCredentials(db);
-			if (!credentials) return;
-			await sendFeishuText(
-				credentials,
+			// Telegram owner alerts when enabled; otherwise Feishu only behind
+			// its web-support switch. sendOwnerAlert records the outcome.
+			await sendOwnerAlert(
+				db,
 				formatFeishuWebSupportAlert(topicName, message),
+				{ requireFeishuEnabled: true },
 			);
-			await recordFeishuAlertResult(db, { sent: true });
-		} catch (error) {
-			await recordFeishuAlertResult(db, {
-				sent: false,
-				errorCode: feishuAlertErrorCode(error),
-			}).catch(() => undefined);
+		} catch {
+			// Owner pings never block the customer's message reaching Telegram.
 		}
 	})();
 	const waitUntil = getRuntimeEnv().waitUntil;

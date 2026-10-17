@@ -4,6 +4,10 @@ import {
 	feishuAlertSettingKeys,
 	feishuAppSecretPurpose,
 } from "#/features/telegram/server/feishu-alerts";
+import {
+	telegramOwnerAlertBotTokenPurpose,
+	telegramOwnerAlertSettingKeys,
+} from "#/features/telegram/server/owner-alerts";
 import { reencryptSecret, secretKeyIds } from "#/lib/secrets";
 import type { RuntimeConfig } from "#/server/runtime-config";
 
@@ -95,6 +99,12 @@ export async function progressivelyReencryptSecrets(
 		db,
 		feishuAlertSettingKeys.appSecret,
 		feishuAppSecretPurpose,
+		runtime.dataEncryptionSecret,
+	);
+	rewritten += await reencryptSettingSecret(
+		db,
+		telegramOwnerAlertSettingKeys.botToken,
+		telegramOwnerAlertBotTokenPurpose,
 		runtime.dataEncryptionSecret,
 	);
 	rewritten += await reencryptJsonSecretMap(

@@ -1,7 +1,7 @@
 import {
-	resolveFeishuAlertCredentials,
-	sendFeishuText,
-} from "#/features/telegram/server/feishu-alerts";
+	ownerAlertConfigured,
+	sendOwnerAlert,
+} from "#/features/telegram/server/owner-alerts";
 import { claimFixedWindowRateLimit } from "#/server/rate-limit";
 
 // Reuse the owner's configured operational recipient, never customer email.
@@ -30,10 +30,8 @@ export async function publishAuthSecurityAlert(
 		.filter((r) => r.action !== "security.auth_rate_limited")
 		.reduce((sum, r) => sum + r.count, 0);
 	if (!blocked && failures < 10) return { status: "quiet" };
-	const credentials = deliver
-		? null
-		: await resolveFeishuAlertCredentials(db, { requireEnabled: false });
-	if (!deliver && !credentials) return { status: "unconfigured" };
+	if (!deliver && !(await ownerAlertConfigured(db)))
+		return { status: "unconfigured" };
 	const claim = await claimFixedWindowRateLimit(db, {
 		bucketKey: `security:alert:${end}`,
 		limit: 1,
@@ -49,7 +47,7 @@ export async function publishAuthSecurityAlert(
 		}).format(end);
 		const text = `商城认证安全告警\n截至 ${at}（北京时间）的15分钟\n认证失败：${failures}\n触发限流的计数窗口：${blocked}\n请核查商城审计；这不是入侵成功的证明。`;
 		if (deliver) await deliver(text);
-		else if (credentials) await sendFeishuText(credentials, text);
+		else if (!(await sendOwnerAlert(db, text))) throw new Error("unconfigured");
 		await record(db, "security.alert_sent", end, now);
 		return { status: "sent" };
 	} catch {

@@ -3,15 +3,10 @@ import {
 	loadDeliveryWarehouseToken,
 	requestWarehouse,
 } from "#/features/redeem-warehouse/server/warehouse-client";
-import {
-	feishuAlertErrorCode,
-	recordFeishuAlertResult,
-	resolveFeishuAlertCredentials,
-	sendFeishuText,
-} from "#/features/telegram/server/feishu-alerts";
+import { deliverOwnerAlert } from "#/features/telegram/server/owner-alerts";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 
-/** Delivers one owner text. Tests inject it; production posts to the Feishu alert chat. */
+/** Delivers one owner text. Tests inject it; production uses the owner alert channel (Telegram, else Feishu). */
 export type Deliver = (text: string) => Promise<void>;
 
 const dayMs = 86_400_000;
@@ -128,26 +123,13 @@ export async function claimInterval(
 	return Number(result.meta.changes ?? 0) === 1;
 }
 
-export async function deliverToFeishu(
+export async function deliverToOwner(
 	db: D1Database,
 	text: string,
 	fetcher: typeof fetch,
 	uuid: string,
 ) {
-	try {
-		const credentials = await resolveFeishuAlertCredentials(db, {
-			requireEnabled: false,
-		});
-		if (!credentials) throw new Error("feishu_configuration_unavailable");
-		await sendFeishuText(credentials, text, fetcher, uuid);
-		await recordFeishuAlertResult(db, { sent: true });
-	} catch (error) {
-		await recordFeishuAlertResult(db, {
-			sent: false,
-			errorCode: feishuAlertErrorCode(error),
-		}).catch(() => undefined);
-		throw error;
-	}
+	await deliverOwnerAlert(db, text, { fetcher, uuid });
 }
 
 const unsentSchema = z.object({ text: z.string(), at: z.number() });
@@ -209,7 +191,7 @@ export function resolveDeliver(
 ): Deliver {
 	return (
 		deliver ??
-		((text) => deliverToFeishu(db, text, fetcher, `${uuidPrefix}-${now}`))
+		((text) => deliverToOwner(db, text, fetcher, `${uuidPrefix}-${now}`))
 	);
 }
 
