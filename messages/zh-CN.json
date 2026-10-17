@@ -2199,7 +2199,6 @@
 	"promotion_title": "邀请好友，获得购物奖励",
 	"promotion_rules": "朋友用你的邀请码下单享优惠，你获得购物奖励。交付完成后的次日北京时间 00:00 起奖励可用，不可提现，退款会冲回奖励。",
 	"promotion_balance": "可用奖励（负数将抵扣后续奖励）",
-	"promotion_code": "我的邀请码",
 	"promotion_copy_link": "复制邀请链接",
 	"promotion_disabled": "此邀请码已停用",
 	"promotion_open": "开通我的邀请码",
