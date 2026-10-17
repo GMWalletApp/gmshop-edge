@@ -97,4 +97,32 @@ describe("redeem restock ops API", { timeout: 30_000 }, () => {
 			expect.objectContaining({ currentUser: { id: null } }),
 		);
 	});
+
+	it("only issues owned codes when no keys are supplied", async () => {
+		const restock = vi.fn();
+		const generate = vi.fn(async () => ({
+			idempotent: false,
+			imported: 3,
+			count: 3,
+		}));
+		const { content: _content, unitCostYuan: _cost, ...generateBody } = body;
+		const response = await handleRedeemRestockRequest(
+			post({ ...generateBody, sku: "CODEX_250", count: 3 }),
+			env,
+			restock,
+			generate,
+		);
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			ok: true,
+			idempotent: false,
+			imported: 3,
+			count: 3,
+		});
+		expect(restock).not.toHaveBeenCalled();
+		expect(generate).toHaveBeenCalledWith(
+			expect.objectContaining({ sku: "CODEX_250", count: 3 }),
+			expect.objectContaining({ currentUser: { id: null } }),
+		);
+	});
 });

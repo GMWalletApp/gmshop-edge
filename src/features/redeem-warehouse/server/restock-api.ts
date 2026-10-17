@@ -4,14 +4,21 @@ import { DomainError } from "#/lib/domain-error";
 import { claimFixedWindowRateLimit } from "#/server/rate-limit";
 import type { CloudflareBindings } from "#/server/runtime/cloudflare";
 import { loadRuntimeConfig } from "#/server/runtime-config";
-import { quickRestockRedeemWarehouse, quickRestockSchema } from "./admin";
+import {
+	generateRedeemSellableInventory,
+	generateSellableSchema,
+	quickRestockRedeemWarehouse,
+	quickRestockSchema,
+} from "./admin";
 
 // Token-authenticated counterpart of the admin quick restock, so the restock
-// skill fills the warehouse and the storefront item in one call.
+// skill fills the warehouse and the storefront item in one call. A body without
+// `content` only issues owned codes, for SKUs the warehouse buys keys for itself.
 export async function handleRedeemRestockRequest(
 	request: Request,
 	env: CloudflareBindings,
 	restock: typeof quickRestockRedeemWarehouse = quickRestockRedeemWarehouse,
+	generate: typeof generateRedeemSellableInventory = generateRedeemSellableInventory,
 ): Promise<Response> {
 	try {
 		const db = env.DB;
@@ -41,7 +48,9 @@ export async function handleRedeemRestockRequest(
 				413,
 				"Payload too large",
 			);
-		const data = quickRestockSchema.parse(await request.json());
+		const body: unknown = await request.json();
+		const generateOnly =
+			typeof body === "object" && body !== null && !("content" in body);
 		const runtime = await loadRuntimeConfig(db);
 		if (!runtime.commerceSecret)
 			throw new DomainError(
@@ -49,12 +58,15 @@ export async function handleRedeemRestockRequest(
 				503,
 				"Restock API unavailable",
 			);
-		const result = await restock(data, {
+		const context = {
 			db,
 			currentUser: { id: null },
 			request,
 			runtime: { commerceSecret: runtime.commerceSecret },
-		});
+		};
+		const result = generateOnly
+			? await generate(generateSellableSchema.parse(body), context)
+			: await restock(quickRestockSchema.parse(body), context);
 		return json({ ok: true, ...result }, 200);
 	} catch (error) {
 		if (error instanceof DomainError)

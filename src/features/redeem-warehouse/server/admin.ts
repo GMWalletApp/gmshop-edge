@@ -53,7 +53,7 @@ export const quickRestockSchema = importSchema.extend({
 	componentId: z.uuid(),
 });
 
-const generateSellableSchema = z.object({
+export const generateSellableSchema = z.object({
 	requestRef: z
 		.string()
 		.trim()
