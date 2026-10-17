@@ -3,6 +3,7 @@ import {
 	RESELLER_REDEEM_URL,
 	redeemUrlForOrder,
 	STOREFRONT_REDEEM_URL,
+	withOrderRedeemHost,
 	withRedeemHost,
 } from "#/features/redeem-warehouse/redeem-host";
 
@@ -44,6 +45,17 @@ describe("redemption host by order channel", () => {
 		);
 		expect(withRedeemHost(stored, RESELLER_REDEEM_URL)).not.toContain(
 			"laoshirenvip",
+		);
+	});
+
+	it("shows admins the host of the order's own channel", async () => {
+		const stored =
+			"CDK：claude-max-5x-ios-AAAA\n充值地址：https://redeem.lsrai.shop";
+		expect(await withOrderRedeemHost(dbWith(false), "order-1", stored)).toBe(
+			"CDK：claude-max-5x-ios-AAAA\n充值地址：https://redeem.laoshirenvip.com",
+		);
+		expect(await withOrderRedeemHost(dbWith(true), "order-1", stored)).toBe(
+			stored,
 		);
 	});
 });

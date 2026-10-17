@@ -20,3 +20,11 @@ export async function redeemUrlForOrder(db: D1Database, orderId: string) {
 		.first();
 	return viaApi ? RESELLER_REDEEM_URL : STOREFRONT_REDEEM_URL;
 }
+
+export async function withOrderRedeemHost(
+	db: D1Database,
+	orderId: string,
+	content: string,
+) {
+	return withRedeemHost(content, await redeemUrlForOrder(db, orderId));
+}

@@ -11,6 +11,7 @@ import {
 	completeManualDelivery,
 	startManualDelivery,
 } from "#/features/fulfillment/server/process";
+import { withOrderRedeemHost } from "#/features/redeem-warehouse/redeem-host";
 import { DomainError } from "#/lib/domain-error";
 import { getCloudflareEnv } from "#/server/db.server";
 import { loadRequestRuntimeConfig } from "#/server/runtime-config";
@@ -298,11 +299,12 @@ export const revealDeliveryContentFn = createServerFn({ method: "POST" })
 		await verifySensitiveAdminAction(context.request, context.user.id, data);
 		const row = await context.db
 			.prepare(
-				`SELECT content_encrypted FROM delivery_records
-				 WHERE id = ? AND status = 'delivered' LIMIT 1`,
+				`SELECT dr.content_encrypted, oi.order_id FROM delivery_records dr
+				 JOIN shop_order_items oi ON oi.id = dr.order_item_id
+				 WHERE dr.id = ? AND dr.status = 'delivered' LIMIT 1`,
 			)
 			.bind(data.id)
-			.first<{ content_encrypted: string | null }>();
+			.first<{ content_encrypted: string | null; order_id: string }>();
 		if (!row?.content_encrypted)
 			throw new DomainError(
 				"delivery_content_unavailable",
@@ -314,9 +316,14 @@ export const revealDeliveryContentFn = createServerFn({ method: "POST" })
 			context.db,
 			new URL(context.request.url).origin,
 		);
-		const content = await decryptDeliveryContent(
-			row.content_encrypted,
-			runtime.commerceSecret,
+		// Show the owner the same redemption host the customer sees for this order's channel.
+		const content = await withOrderRedeemHost(
+			context.db,
+			row.order_id,
+			await decryptDeliveryContent(
+				row.content_encrypted,
+				runtime.commerceSecret,
+			),
 		);
 		const now = Date.now();
 		await context.db.batch([
