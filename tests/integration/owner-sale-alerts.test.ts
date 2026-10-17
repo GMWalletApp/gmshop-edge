@@ -249,8 +249,8 @@ describe("owner sale alerts", { timeout: 30_000 }, () => {
 				now,
 				readBalance: async () => null,
 				readWarehouse: async () => ({
-					balance: "1620.5",
-					skus: { GPT_PLUS_IOS: { available: 0, autoRestock: true } },
+					balances: { "86": "1620.5", xiaojiu: null },
+					skus: { GPT_PLUS_IOS: { available: 0, source: "86" } },
 				}),
 				deliver: async (text) => {
 					messages.push(text);
@@ -546,14 +546,17 @@ it("shows storefront codes, real 86 credentials and a low-stock warning", () => 
 				},
 			],
 			{
-				balance: "1742",
-				skus: { CLAUDE_PRO_IOS: { available: 1, autoRestock: false } },
+				balances: { "86": "1742", xiaojiu: "3888" },
+				skus: {
+					CLAUDE_PRO_IOS: { available: 1, source: null },
+					GPT_PLUS_PH: { available: 0, source: "xiaojiu" },
+				},
 			},
 		),
 	).toEqual([
 		"· Claude · Pro：前台可售 92｜真实凭证 1 ⚠️",
 		"· 算力卡 · ¥50：剩余卡密 29",
-		"· Plus · 菲区：前台可售 68｜真实凭证 读取失败 ⚠️",
-		"86 余额：¥1742.00",
+		"· Plus · 菲区：前台可售 68｜真实凭证 0（用完自动从 小九 进货）",
+		"小九 余额：¥3888.00",
 	]);
 });

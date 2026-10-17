@@ -68,10 +68,16 @@ type Balance = {
 	fresh: boolean;
 };
 
+type RestockSource = "86" | "xiaojiu";
+const restockLabel: Record<RestockSource, string> = {
+	"86": "86",
+	xiaojiu: "小九",
+};
+
 // Real 86 vault state, read once per alert after the sale.
 export type WarehouseSnapshot = {
-	balance: string | null;
-	skus: Record<string, { available: number; autoRestock: boolean }>;
+	balances: Record<RestockSource, string | null>;
+	skus: Record<string, { available: number; source: RestockSource | null }>;
 };
 
 type StockItem = {
@@ -533,26 +539,41 @@ export function formatStockLines(
 		const real = snapshot?.skus[item.redeem_sku];
 		const realText = !real
 			? "真实凭证 读取失败 ⚠️"
-			: real.autoRestock
-				? `真实凭证 ${real.available}（用完自动从 86 进货）`
+			: real.source
+				? `真实凭证 ${real.available}（用完自动从 ${restockLabel[real.source]} 进货）`
 				: `真实凭证 ${real.available}${low(real.available)}`;
 		lines.push(`· ${item.name}：前台可售 ${item.front_available}｜${realText}`);
 	}
-	if (rows.some((item) => item.redeem_sku))
+	if (!snapshot) {
+		if (rows.some((item) => item.redeem_sku)) lines.push("进货余额：读取失败");
+		return lines;
+	}
+	const sources = new Set(
+		rows.flatMap((item) => {
+			const source = item.redeem_sku && snapshot.skus[item.redeem_sku]?.source;
+			return source ? [source] : [];
+		}),
+	);
+	for (const source of ["86", "xiaojiu"] as const) {
+		if (!sources.has(source)) continue;
+		const balance = snapshot.balances[source];
 		lines.push(
-			`86 余额：${snapshot?.balance != null ? `¥${Number(snapshot.balance).toFixed(2)}` : "读取失败"}`,
+			`${restockLabel[source]} 余额：${balance != null ? `¥${Number(balance).toFixed(2)}` : "读取失败"}`,
 		);
+	}
 	return lines;
 }
 
 const warehouseSummarySchema = z.object({
 	success: z.literal(true),
 	faka_balance: z.union([z.string(), z.number()]).nullable().optional(),
+	xiaojiu_balance: z.union([z.string(), z.number()]).nullable().optional(),
 	data: z.array(
 		z.object({
 			sku: z.string(),
 			available: z.number().int().nonnegative(),
 			auto_restock: z.boolean().optional(),
+			restock_source: z.enum(["86", "xiaojiu"]).nullable().optional(),
 		}),
 	),
 });
@@ -572,11 +593,24 @@ async function readWarehouse(
 		),
 	);
 	return {
-		balance: body.faka_balance == null ? null : String(body.faka_balance),
+		balances: {
+			"86": body.faka_balance == null ? null : String(body.faka_balance),
+			xiaojiu:
+				body.xiaojiu_balance == null ? null : String(body.xiaojiu_balance),
+		},
 		skus: Object.fromEntries(
 			body.data.map((row) => [
 				row.sku,
-				{ available: row.available, autoRestock: row.auto_restock ?? false },
+				{
+					available: row.available,
+					// Older vaults only report a flag, and only 86 restocked then.
+					source:
+						row.restock_source !== undefined
+							? row.restock_source
+							: row.auto_restock
+								? ("86" as const)
+								: null,
+				},
 			]),
 		),
 	};
