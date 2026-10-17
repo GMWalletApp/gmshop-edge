@@ -1,12 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { Button } from "#/components/ui/button";
-import { Input } from "#/components/ui/input";
 import { formatDateTime, formatMinorAmountWithSymbol } from "#/lib/format";
 import { m } from "#/paraglide/messages";
+import { promotionAccountQueryKey, ReferralInvite } from "./referral-invite";
 import {
 	getPromotionAccountFn,
-	openReferralFn,
 	setMarketingConsentFn,
 } from "./server/functions";
 
@@ -14,15 +11,11 @@ const money = (value: string) => formatMinorAmountWithSymbol(value, "CNY", 2);
 export function PromotionAccount() {
 	const client = useQueryClient();
 	const query = useQuery({
-		queryKey: ["promotion-account"],
+		queryKey: promotionAccountQueryKey,
 		queryFn: () => getPromotionAccountFn(),
 	});
 	const refresh = () =>
-		client.invalidateQueries({ queryKey: ["promotion-account"] });
-	const open = useMutation({
-		mutationFn: () => openReferralFn(),
-		onSuccess: refresh,
-	});
+		client.invalidateQueries({ queryKey: promotionAccountQueryKey });
 	const consent = useMutation({
 		mutationFn: (enabled: boolean) =>
 			setMarketingConsentFn({ data: { enabled } }),
@@ -45,42 +38,8 @@ export function PromotionAccount() {
 					<p>
 						{m.promotion_balance()}: <strong>{money(data.balanceMinor)}</strong>
 					</p>
-					{data.referral ? (
-						<>
-							<label htmlFor="invitation-code" className="grid gap-2 text-sm">
-								{m.promotion_code()}
-								<Input
-									id="invitation-code"
-									value={data.referral.code}
-									readOnly
-								/>
-							</label>
-							<Button
-								variant="outline"
-								disabled={!data.referral.enabled}
-								onClick={async () => {
-									const url = new URL("/", window.location.origin);
-									url.searchParams.set("ref", data.referral?.code ?? "");
-									try {
-										await navigator.clipboard.writeText(url.href);
-										toast.success(m.common_copy_success());
-									} catch {
-										toast.error(m.common_copy_failed());
-									}
-								}}
-							>
-								{m.promotion_copy_link()}
-							</Button>
-							{!data.referral.enabled ? <p>{m.promotion_disabled()}</p> : null}
-						</>
-					) : (
-						<Button disabled={open.isPending} onClick={() => open.mutate()}>
-							{m.promotion_open()}
-						</Button>
-					)}
-					{open.isError || consent.isError ? (
-						<p role="alert">{m.promotion_error()}</p>
-					) : null}
+					<ReferralInvite />
+					{consent.isError ? <p role="alert">{m.promotion_error()}</p> : null}
 					<label className="flex items-start gap-2 text-sm">
 						<input
 							type="checkbox"

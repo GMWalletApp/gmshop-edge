@@ -7,10 +7,12 @@ import {
 	recipientHash,
 	recipientSuppressionReason,
 } from "#/features/notifications/server/recipient-policy";
+import { issueRecallCoupon } from "#/features/promotions/server/coupons";
 import {
 	loadDeliveryWarehouseToken,
 	requestWarehouse,
 } from "#/features/redeem-warehouse/server/warehouse-client";
+import { DomainError } from "#/lib/domain-error";
 import type { SupportedLocale } from "#/lib/locales";
 import { loadRuntimeConfig, type RuntimeConfig } from "#/server/runtime-config";
 import {
@@ -751,23 +753,31 @@ async function sendDueReminders(
 			.bind(now, row.id)
 			.run();
 		if (Number(claimed.meta.changes ?? 0) !== 1) continue;
-		const content = renderRenewalEmail({
-			stage: row.stage,
-			locale: row.locale,
-			itemName: row.item_name,
-			expiresAt: renewalExpiresAt(row.anchor_at, row.cycle_days),
-			now,
-			siteDomain,
-			brand,
-			renewUrl: `${origin}/r/renew/${row.click_token}`,
-			unsubscribeUrl: await renewalUnsubscribeUrl(runtime, row.recipient_email),
-		});
 		const oneClick = await renewalUnsubscribeUrl(
 			runtime,
 			row.recipient_email,
 			"/api/shop/renewal/unsubscribe",
 		);
 		try {
+			const content = renderRenewalEmail({
+				stage: row.stage,
+				locale: row.locale,
+				itemName: row.item_name,
+				expiresAt: renewalExpiresAt(row.anchor_at, row.cycle_days),
+				now,
+				siteDomain,
+				brand,
+				renewUrl: `${origin}/r/renew/${row.click_token}`,
+				unsubscribeUrl: await renewalUnsubscribeUrl(
+					runtime,
+					row.recipient_email,
+				),
+				inviteUrl: `${origin}/account`,
+				recallCoupon:
+					row.stage === "recall"
+						? await issueReminderRecallCoupon(db, row, now)
+						: null,
+			});
 			const delivery = await enqueueConfiguredEmailNotification(db, {
 				event: renewalEmailEvents[row.stage],
 				idempotencyKey: `renewal:${row.id}`,
@@ -789,7 +799,7 @@ async function sendDueReminders(
 				.bind(now, delivery.id, now, row.id)
 				.run();
 		} catch {
-			// The email channel is unavailable; retry on the next run.
+			// The email channel (or coupon storage) is unavailable; retry on the next run.
 			await db
 				.prepare(
 					"UPDATE renewal_reminder_sends SET status = 'pending', updated_at = ? WHERE id = ? AND status = 'sending'",
@@ -802,6 +812,46 @@ async function sendDueReminders(
 		result.sent += 1;
 	}
 	return result;
+}
+
+/** Campaign key per reminder: retries and later passes reuse the same coupon. */
+export function recallCouponCampaignKey(reminderId: string) {
+	return `renewal_recall:${reminderId}`;
+}
+
+/**
+ * The recall email's personal coupon, issued through the regular recall rules
+ * (verified email, marketing consent, a paid order). Ineligible customers, or a
+ * coupon that is no longer usable, get the email without a coupon.
+ */
+async function issueReminderRecallCoupon(
+	db: D1Database,
+	row: Pick<DueRow, "reminder_id" | "user_id">,
+	now: number,
+) {
+	if (!row.user_id) return null;
+	try {
+		const coupon = await issueRecallCoupon(db, {
+			userId: row.user_id,
+			campaignKey: recallCouponCampaignKey(row.reminder_id),
+			startsAt: now,
+		});
+		if (
+			!coupon ||
+			coupon.enabled !== 1 ||
+			coupon.used_count > 0 ||
+			coupon.ends_at <= now
+		)
+			return null;
+		return { code: coupon.code, endsAt: coupon.ends_at };
+	} catch (error) {
+		if (
+			error instanceof DomainError &&
+			error.code === "recall_customer_ineligible"
+		)
+			return null;
+		throw error;
+	}
 }
 
 async function recipientExclusion(

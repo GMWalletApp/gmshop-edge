@@ -210,6 +210,15 @@ export async function previewRenewalEmails(db: D1Database, now = Date.now()) {
 			brand,
 			renewUrl: `${origin}/r/renew/EXAMPLE_TOKEN`,
 			unsubscribeUrl: `${origin}/unsubscribe/renewal?e=${encodeURIComponent(maskEmail(email))}&sig=…`,
+			inviteUrl: `${origin}/account`,
+			// Eligible recall recipients get a personal code; the preview shows its shape.
+			recallCoupon:
+				stage === "recall"
+					? {
+							code: "BACK-EXAMPLE",
+							endsAt: (sample?.due_at ?? now) + 7 * dayMs,
+						}
+					: null,
 		});
 		examples.push({
 			stage,

@@ -2281,5 +2281,13 @@
 	"renewal_unsubscribe_description": "{email} 将不再收到任何续费提醒和召回邮件。",
 	"renewal_unsubscribe_confirm": "确认退订",
 	"renewal_unsubscribe_done": "已退订。订单和发货邮件不受影响。",
-	"renewal_unsubscribe_invalid": "退订链接无效，请从最新邮件中重新打开链接。"
+	"renewal_unsubscribe_invalid": "退订链接无效，请从最新邮件中重新打开链接。",
+	"store_cross_sell_title": "买了这个的人还买了",
+	"store_cross_sell_view": "去看看",
+	"promotion_invite_title": "邀请好友下单",
+	"promotion_invite_pitch": "邀请好友下单：好友首单立减，你得到同等返利，可抵下次消费",
+	"promotion_invite_amount": "这单商品好友立减 {amount}，你得 {amount}",
+	"promotion_invite_link": "我的邀请链接",
+	"promotion_invite_guest": "用下单邮箱登录或注册账号，即可获得专属邀请链接。",
+	"promotion_invite_sign_in": "登录 / 注册"
 }

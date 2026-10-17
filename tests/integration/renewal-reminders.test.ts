@@ -6,7 +6,7 @@ import { decryptNotificationMessage } from "#/features/notifications/secrets";
 import { sendProviderEmail } from "#/features/notifications/server/email-provider";
 import { recipientHash } from "#/features/notifications/server/recipient-policy";
 import type { requestWarehouse } from "#/features/redeem-warehouse/server/warehouse-client";
-import { redeemCodeHash } from "#/features/renewals/domain";
+import { redeemCodeHash, renderRenewalEmail } from "#/features/renewals/domain";
 import {
 	resolveRenewalClick,
 	signRenewalUnsubscribe,
@@ -316,7 +316,10 @@ describe("renewal reminders", { timeout: 120_000 }, () => {
 			"记住我们：laoshirenvip.com（就是「老实人VIP」的拼音）",
 		);
 		expect(message.text).toContain("/unsubscribe/renewal?e=");
-		expect(message.text).not.toMatch(/优惠|coupon/i);
+		expect(message.text).not.toMatch(/优惠|coupon|BACK-|回购码/i);
+		expect(message.text).toContain(
+			"邀请好友下单：好友首单立减，你得到同等返利，可抵下次消费。领取邀请链接：https://laoshirenvip.com/account",
+		);
 		expect(message.headers).toEqual({
 			"List-Unsubscribe": expect.stringMatching(
 				/^<https:\/\/laoshirenvip\.com\/api\/shop\/renewal\/unsubscribe\?e=/,
@@ -389,6 +392,112 @@ describe("renewal reminders", { timeout: 120_000 }, () => {
 		});
 		expect(recallOn).toMatchObject({ sent: 1 });
 		expect((await stageStatuses(db)).recall).toBe("sent");
+	});
+
+	it("issues one personal recall coupon per reminder and puts it in the recall email", async () => {
+		await seedCustomer(db, "u1", "buyer@customer.com", { consent: true });
+		await seedCustomer(db, "u2", "nope@customer.com", { consent: false });
+		await seedOrder(db, {
+			id: "o1",
+			email: "buyer@customer.com",
+			content: code,
+			userId: "u1",
+		});
+		await seedOrder(db, {
+			id: "o2",
+			email: "nope@customer.com",
+			content: code.replace("ABCD", "WXYZ"),
+			userId: "u2",
+		});
+		await runRenewalReminders(db, {
+			now: deliveredAt + 60_000,
+			force: true,
+			lookup: completedLookup(null),
+		});
+		await setSetting(db, "notifications.renewal_recall_enabled", true);
+		const sendAt = recallDue + 5 * 86_400_000;
+		const run = await runRenewalReminders(db, { now: sendAt, force: true });
+		expect(run).toMatchObject({ sent: 2 });
+		const coupons = await db
+			.prepare(
+				"SELECT code, recipient_user_id, campaign_key, starts_at, ends_at, usage_limit FROM coupons WHERE purpose = 'recall'",
+			)
+			.all<{
+				code: string;
+				recipient_user_id: string;
+				campaign_key: string;
+				starts_at: number;
+				ends_at: number;
+				usage_limit: number;
+			}>();
+		const reminderId = String(
+			await db
+				.prepare("SELECT id FROM renewal_reminders WHERE order_id = 'o1'")
+				.first("id"),
+		);
+		expect(coupons.results).toEqual([
+			{
+				code: expect.stringMatching(/^BACK-[0-9A-F]{32}$/),
+				recipient_user_id: "u1",
+				campaign_key: `renewal_recall:${reminderId}`,
+				starts_at: sendAt,
+				ends_at: sendAt + 7 * 86_400_000,
+				usage_limit: 1,
+			},
+		]);
+		const couponCode = coupons.results[0]?.code ?? "";
+		const texts = await recallTexts(db);
+		expect(texts.o1).toContain(`你的专属回购码：${couponCode}`);
+		expect(texts.o1).toContain(
+			"有效期 7 天（至北京时间 10月23日），登录购买账号后在结账时输入即可抵扣。",
+		);
+		expect(texts.o1).not.toContain("邀请好友");
+		// No marketing consent: the recall email goes out without a coupon.
+		expect(texts.o2).toBeDefined();
+		expect(texts.o2).not.toMatch(/BACK-|回购码/);
+
+		// A retry of the same reminder (e.g. after a failed enqueue) reuses the coupon.
+		await db
+			.prepare(
+				"UPDATE renewal_reminder_sends SET status = 'pending', sent_at = NULL WHERE stage = 'recall'",
+			)
+			.run();
+		const retry = await runRenewalReminders(db, {
+			now: sendAt + 3_600_000,
+			force: true,
+		});
+		expect(retry).toMatchObject({ sent: 2 });
+		expect(await count(db, "coupons")).toBe(1);
+		expect((await recallTexts(db)).o1).toContain(
+			`你的专属回购码：${couponCode}`,
+		);
+	});
+
+	it("renders the English recall coupon and invite lines", () => {
+		const base = {
+			locale: "en-US" as const,
+			itemName: "ChatGPT Plus",
+			expiresAt: remindDueDue,
+			now: recallDue,
+			siteDomain: "laoshirenvip.com",
+			brand: "老实人AI VIP",
+			renewUrl: "https://laoshirenvip.com/r/renew/token",
+			unsubscribeUrl: "https://laoshirenvip.com/unsubscribe/renewal",
+			inviteUrl: "https://laoshirenvip.com/account",
+			recallCoupon: { code: "BACK-TEST", endsAt: recallDue + 7 * 86_400_000 },
+		};
+		const recall = renderRenewalEmail({ ...base, stage: "recall" }).text;
+		expect(recall).toContain("Your personal welcome-back code: BACK-TEST");
+		expect(recall).toContain("Valid for 7 days (until Oct 18, Beijing time)");
+		expect(recall).not.toContain("Invite friends");
+		const reminder = renderRenewalEmail({ ...base, stage: "remind_3d" }).text;
+		expect(reminder).not.toContain("BACK-TEST");
+		expect(reminder).toContain(
+			"Get your invite link: https://laoshirenvip.com/account",
+		);
+		expect(
+			renderRenewalEmail({ ...base, stage: "recall", recallCoupon: null }).text,
+		).not.toContain("code");
 	});
 
 	it("never sends stale reminders for backfilled history", async () => {
@@ -886,6 +995,40 @@ async function setSetting(db: D1Database, key: string, value: unknown) {
 		.run();
 }
 
+async function seedCustomer(
+	db: D1Database,
+	id: string,
+	email: string,
+	options: { consent: boolean },
+) {
+	await db
+		.prepare(
+			`INSERT INTO users (id, name, email, email_verified, enabled, marketing_consent,
+			  preferred_locale, created_at, updated_at)
+			 VALUES (?, 'Customer', ?, 1, 1, ?, 'zh-CN', 1, 1)`,
+		)
+		.bind(id, email, options.consent ? 1 : 0)
+		.run();
+}
+
+/** Decrypted recall email text per order id. */
+async function recallTexts(db: D1Database) {
+	const rows = await db
+		.prepare(
+			`SELECT r.order_id, d.message_encrypted FROM notification_deliveries d
+			 JOIN renewal_reminder_sends s ON s.notification_delivery_id = d.id
+			 JOIN renewal_reminders r ON r.id = s.reminder_id
+			 WHERE d.event = 'renewal_recall'`,
+		)
+		.all<{ order_id: string; message_encrypted: string }>();
+	const texts: Record<string, string> = {};
+	for (const row of rows.results)
+		texts[row.order_id] = JSON.parse(
+			await decryptNotificationMessage(row.message_encrypted, secret),
+		).text;
+	return texts;
+}
+
 async function seedBase(db: D1Database) {
 	await db.batch([
 		db.prepare(
@@ -939,6 +1082,7 @@ async function seedOrder(
 		sellableItemId?: string;
 		paidAt?: number;
 		deliveredAt?: number;
+		userId?: string;
 	},
 ) {
 	const item = input.sellableItemId ?? "item-plus";
@@ -953,15 +1097,16 @@ async function seedOrder(
 		db
 			.prepare(
 				`INSERT INTO shop_orders
-				 (id, order_number, contact_email, normalized_contact_email, locale,
+				 (id, order_number, user_id, contact_email, normalized_contact_email, locale,
 				  status, currency, currency_decimals, subtotal_minor, discount_minor,
 				  total_minor, paid_minor, version, expires_at, paid_at, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, 'zh-CN', 'completed', 'CNY', 2, '100', '0', '100', '100',
+				 VALUES (?, ?, ?, ?, ?, 'zh-CN', 'completed', 'CNY', 2, '100', '0', '100', '100',
 				  2, 1, ?, ?, ?)`,
 			)
 			.bind(
 				input.id,
 				`ORDER-${input.id.toUpperCase()}`,
+				input.userId ?? null,
 				input.email,
 				input.email.toLowerCase(),
 				paidAt,

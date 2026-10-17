@@ -2281,5 +2281,13 @@
 	"renewal_unsubscribe_description": "{email} will no longer receive renewal reminders or recall emails.",
 	"renewal_unsubscribe_confirm": "Unsubscribe",
 	"renewal_unsubscribe_done": "You have been unsubscribed. Order and delivery emails are not affected.",
-	"renewal_unsubscribe_invalid": "This unsubscribe link is invalid. Open the link from the latest email again."
+	"renewal_unsubscribe_invalid": "This unsubscribe link is invalid. Open the link from the latest email again.",
+	"store_cross_sell_title": "Customers who bought this also bought",
+	"store_cross_sell_view": "View",
+	"promotion_invite_title": "Invite friends",
+	"promotion_invite_pitch": "Invite friends to order: they save on their first order and you earn the same amount as credit for your next purchase",
+	"promotion_invite_amount": "For this item, your friend saves {amount} and you earn {amount}",
+	"promotion_invite_link": "My invite link",
+	"promotion_invite_guest": "Sign in or register with your order email to get your personal invite link.",
+	"promotion_invite_sign_in": "Sign in / Register"
 }

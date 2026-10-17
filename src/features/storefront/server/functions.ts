@@ -28,6 +28,7 @@ import { getCloudflareEnv, getDb } from "#/server/db.server";
 import { resolveStoreAccount } from "./account";
 import { removeUserCartItems } from "./cart";
 import { createStoreOrder } from "./order";
+import { withOrderGrowth } from "./order-growth";
 import { getStoreOrder } from "./order-query";
 import {
 	paymentChannelIsVisible,
@@ -401,7 +402,10 @@ export const getStoreOrderFn = createServerFn({ method: "POST" })
 	)
 	.handler(async ({ data }) => {
 		requireStorefrontPermission("guest", "order.lookup");
-		return getStoreOrder(getDb().$client, data);
+		const db = getDb().$client;
+		return withOrderGrowth(db, await getStoreOrder(db, data), {
+			signedIn: false,
+		});
 	});
 
 const retryStorePaymentSchema = storeOrderLookupSchema.extend({
@@ -417,17 +421,20 @@ export const refreshStoreOrderFn = createServerFn({ method: "POST" })
 		const db = getDb(request).$client;
 		const account = await resolveStoreAccount(db, request);
 		requireStorefrontPermission(account ? "customer" : "guest", "order.lookup");
+		const growthAccess = { signedIn: Boolean(account) };
 		let order = await getStoreOrder(db, data, { userId: account?.user.id });
-		if (order.status !== "pending_payment") return order;
+		if (order.status !== "pending_payment")
+			return withOrderGrowth(db, order, growthAccess);
 		const reconciliation = await reconcileShopOrderPayment(db, order.id);
-		if (!reconciliation.checked) return order;
+		if (!reconciliation.checked)
+			return withOrderGrowth(db, order, growthAccess);
 		const queue = getCloudflareEnv(request).COMMERCE_QUEUE;
 		if (queue) {
 			await publishPendingDeliveries(db, queue);
 			await publishPendingSupplierOrders(db, queue);
 		}
 		order = await getStoreOrder(db, data, { userId: account?.user.id });
-		return order;
+		return withOrderGrowth(db, order, growthAccess);
 	});
 
 export const retryStorePaymentFn = createServerFn({ method: "POST" })

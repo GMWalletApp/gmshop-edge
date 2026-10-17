@@ -33,6 +33,7 @@ import { shopOrderStatusLabel } from "#/features/shop-orders/labels";
 import type { ShopOrderStatus } from "#/features/shop-orders/schema";
 import { DeliveryRevealContent } from "#/features/storefront/components/delivery-reveal-content";
 import { OrderDeliveryNotice } from "#/features/storefront/components/order-delivery-notice";
+import { OrderGrowthBlocks } from "#/features/storefront/components/order-growth";
 import {
 	readGuestOrderEmail,
 	writeGuestOrderEmail,
@@ -526,6 +527,10 @@ export function StorefrontOrderPage({
 										</div>
 									</section>
 								) : null}
+								<OrderGrowthBlocks
+									growth={data.growth}
+									redirectPath={`/account/orders/${encodeURIComponent(orderNumber)}`}
+								/>
 								{data.items.some((item) =>
 									Object.values(agentAccessProducts).some(
 										(p) => p.productId === item.productId,

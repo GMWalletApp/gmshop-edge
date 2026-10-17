@@ -23,6 +23,7 @@ import {
 } from "./account-security";
 import { setUserCartItem } from "./cart";
 import { loadRenewableEntitlement } from "./entitlement-renewal";
+import { withOrderGrowth } from "./order-growth";
 import { getStoreOrder } from "./order-query";
 
 const accountOrderSchema = z.object({
@@ -225,7 +226,11 @@ export const getAccountOrderFn = createServerFn({ method: "POST" })
 				409,
 				"The customer account is not linked yet",
 			);
-		return getStoreOrder(db, data, { userId: account.user.id });
+		return withOrderGrowth(
+			db,
+			await getStoreOrder(db, data, { userId: account.user.id }),
+			{ signedIn: true },
+		);
 	});
 
 const profileSchema = z.object({
