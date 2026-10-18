@@ -92,6 +92,7 @@ import { Route as publicUnsubscribeRenewalRouteImport } from './routes/(public)/
 import { Route as publicProductsProductIdRouteImport } from './routes/(public)/products/$productId'
 import { Route as publicOrdersOrderNumberRouteImport } from './routes/(public)/orders/$orderNumber'
 import { Route as publicGuidesClaudeNetworkCheckRouteImport } from './routes/(public)/guides/claude-network-check'
+import { Route as publicGuidesAppleIdLoginRouteImport } from './routes/(public)/guides/apple-id-login'
 import { Route as publicAccountWalletRouteImport } from './routes/(public)/account/wallet'
 import { Route as publicAccountSettingsRouteImport } from './routes/(public)/account/settings'
 import { Route as publicAccountSessionsRouteImport } from './routes/(public)/account/sessions'
@@ -551,6 +552,12 @@ const publicGuidesClaudeNetworkCheckRoute =
     path: '/guides/claude-network-check',
     getParentRoute: () => publicRouteRoute,
   } as any)
+const publicGuidesAppleIdLoginRoute =
+  publicGuidesAppleIdLoginRouteImport.update({
+    id: '/guides/apple-id-login',
+    path: '/guides/apple-id-login',
+    getParentRoute: () => publicRouteRoute,
+  } as any)
 const publicAccountWalletRoute = publicAccountWalletRouteImport.update({
   id: '/wallet',
   path: '/wallet',
@@ -805,6 +812,7 @@ export interface FileRoutesByFullPath {
   '/account/sessions': typeof publicAccountSessionsRoute
   '/account/settings': typeof publicAccountSettingsRoute
   '/account/wallet': typeof publicAccountWalletRoute
+  '/guides/apple-id-login': typeof publicGuidesAppleIdLoginRoute
   '/guides/claude-network-check': typeof publicGuidesClaudeNetworkCheckRoute
   '/orders/$orderNumber': typeof publicOrdersOrderNumberRoute
   '/products/$productId': typeof publicProductsProductIdRoute
@@ -916,6 +924,7 @@ export interface FileRoutesByTo {
   '/account/sessions': typeof publicAccountSessionsRoute
   '/account/settings': typeof publicAccountSettingsRoute
   '/account/wallet': typeof publicAccountWalletRoute
+  '/guides/apple-id-login': typeof publicGuidesAppleIdLoginRoute
   '/guides/claude-network-check': typeof publicGuidesClaudeNetworkCheckRoute
   '/orders/$orderNumber': typeof publicOrdersOrderNumberRoute
   '/products/$productId': typeof publicProductsProductIdRoute
@@ -1039,6 +1048,7 @@ export interface FileRoutesById {
   '/(public)/account/sessions': typeof publicAccountSessionsRoute
   '/(public)/account/settings': typeof publicAccountSettingsRoute
   '/(public)/account/wallet': typeof publicAccountWalletRoute
+  '/(public)/guides/apple-id-login': typeof publicGuidesAppleIdLoginRoute
   '/(public)/guides/claude-network-check': typeof publicGuidesClaudeNetworkCheckRoute
   '/(public)/orders/$orderNumber': typeof publicOrdersOrderNumberRoute
   '/(public)/products/$productId': typeof publicProductsProductIdRoute
@@ -1161,6 +1171,7 @@ export interface FileRouteTypes {
     | '/account/sessions'
     | '/account/settings'
     | '/account/wallet'
+    | '/guides/apple-id-login'
     | '/guides/claude-network-check'
     | '/orders/$orderNumber'
     | '/products/$productId'
@@ -1272,6 +1283,7 @@ export interface FileRouteTypes {
     | '/account/sessions'
     | '/account/settings'
     | '/account/wallet'
+    | '/guides/apple-id-login'
     | '/guides/claude-network-check'
     | '/orders/$orderNumber'
     | '/products/$productId'
@@ -1394,6 +1406,7 @@ export interface FileRouteTypes {
     | '/(public)/account/sessions'
     | '/(public)/account/settings'
     | '/(public)/account/wallet'
+    | '/(public)/guides/apple-id-login'
     | '/(public)/guides/claude-network-check'
     | '/(public)/orders/$orderNumber'
     | '/(public)/products/$productId'
@@ -2098,6 +2111,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof publicGuidesClaudeNetworkCheckRouteImport
       parentRoute: typeof publicRouteRoute
     }
+    '/(public)/guides/apple-id-login': {
+      id: '/(public)/guides/apple-id-login'
+      path: '/guides/apple-id-login'
+      fullPath: '/guides/apple-id-login'
+      preLoaderRoute: typeof publicGuidesAppleIdLoginRouteImport
+      parentRoute: typeof publicRouteRoute
+    }
     '/(public)/account/wallet': {
       id: '/(public)/account/wallet'
       path: '/wallet'
@@ -2417,6 +2437,7 @@ interface publicRouteRouteChildren {
   publicMeRoute: typeof publicMeRoute
   publicStatusRoute: typeof publicStatusRoute
   publicIndexRoute: typeof publicIndexRoute
+  publicGuidesAppleIdLoginRoute: typeof publicGuidesAppleIdLoginRoute
   publicGuidesClaudeNetworkCheckRoute: typeof publicGuidesClaudeNetworkCheckRoute
   publicOrdersOrderNumberRoute: typeof publicOrdersOrderNumberRoute
   publicProductsProductIdRoute: typeof publicProductsProductIdRoute
@@ -2433,6 +2454,7 @@ const publicRouteRouteChildren: publicRouteRouteChildren = {
   publicMeRoute: publicMeRoute,
   publicStatusRoute: publicStatusRoute,
   publicIndexRoute: publicIndexRoute,
+  publicGuidesAppleIdLoginRoute: publicGuidesAppleIdLoginRoute,
   publicGuidesClaudeNetworkCheckRoute: publicGuidesClaudeNetworkCheckRoute,
   publicOrdersOrderNumberRoute: publicOrdersOrderNumberRoute,
   publicProductsProductIdRoute: publicProductsProductIdRoute,
@@ -2714,7 +2736,6 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
 
 import type { getRouter } from './router.tsx'
 import type { startInstance } from './start.ts'

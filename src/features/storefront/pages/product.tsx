@@ -6,6 +6,7 @@ import {
 	ArrowLeft,
 	BadgePercent,
 	Ban,
+	BookOpen,
 	BookOpenCheck,
 	Boxes,
 	ChevronLeft,
@@ -33,6 +34,7 @@ import { AgentAccessCheckout } from "#/features/agent-access/components/access";
 import { agentAccessKind } from "#/features/agent-access/products";
 import { authClient } from "#/features/auth/auth-client";
 import { StoreMoney } from "#/features/exchange-rates/currency-context";
+import { appleIdLoginGuidePath } from "#/features/guides/apple-id-login";
 import { addLocalCartItem } from "#/features/storefront/cart-storage";
 import { trackCommerceEvent } from "#/features/storefront/commerce-events";
 import {
@@ -66,7 +68,9 @@ const ownUsageGuideProductIds = new Set([
 	"2ee356de-fe69-4641-94c3-1dfea19b6967", // Muse AI 成品号
 	"64812c48-9026-4ef7-874d-b332d2a39b1a", // Gemini Pro 18个月 激活链接
 	"c70d10e8-b781-4782-bc98-1f034bcd069a", // Apple ID 成品号
+	"3e60e88d-a0bd-4723-bc9e-ff45f6dafa16", // X 订阅四合一（订单 CDK 换卡密）
 ]);
+const appleIdProductId = "c70d10e8-b781-4782-bc98-1f034bcd069a";
 
 export function StorefrontProductPage({
 	productId,
@@ -294,6 +298,15 @@ export function StorefrontProductPage({
 					<h1 className="mt-3 text-balance font-semibold text-4xl tracking-[-0.035em] sm:text-5xl">
 						{data.name}
 					</h1>
+					{data.id === appleIdProductId ? (
+						<a
+							className="mt-4 flex max-w-2xl items-center gap-2.5 rounded-xl border border-primary/30 bg-primary/10 px-3.5 py-3 font-semibold text-primary text-sm leading-6 transition-colors hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+							href={appleIdLoginGuidePath}
+						>
+							<BookOpen aria-hidden="true" className="size-4 shrink-0" />
+							<p>查看图文教程：买到的 Apple ID 怎么登录 App Store</p>
+						</a>
+					) : null}
 					{data.description && data.id === claudeRechargeProductId ? (
 						<ClaudeProductDescription description={data.description} />
 					) : data.description ? (
