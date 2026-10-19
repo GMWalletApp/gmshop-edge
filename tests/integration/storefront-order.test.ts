@@ -1,7 +1,10 @@
 import { Miniflare } from "miniflare";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { expireStoreOrders } from "#/features/shop-orders/server/expiration";
-import { completeFreeStoreOrder } from "#/features/shop-payments/server/service";
+import {
+	completeFreeStoreOrder,
+	createShopPayment,
+} from "#/features/shop-payments/server/service";
 import { createMultiStoreOrder } from "#/features/storefront/server/multi-order";
 import { getStoreOrder } from "#/features/storefront/server/order-query";
 import { applyMigrations } from "./migrations";
@@ -142,6 +145,26 @@ describe("storefront order creation", { timeout: 30_000 }, () => {
 			total_minor: "2400",
 			unit_price_minor: "1200",
 		});
+
+		// The cheaper channel's quote cannot be paid through another channel.
+		await database
+			.prepare(
+				`INSERT INTO payment_channels
+				 (id,provider,name,currency,fee_bps,fixed_fee_minor,enabled,created_at,updated_at)
+				 VALUES ('7a1c2b3d-0000-4000-8000-000000000001','gmpay','Other','CNY',300,'0',1,1,1)`,
+			)
+			.run();
+		await expect(
+			createShopPayment(database, {
+				orderId: result.id,
+				channelId: "7a1c2b3d-0000-4000-8000-000000000001",
+				paymentCurrency: "CNY",
+				idempotencyKey: "pay-other-channel",
+				successUrl: "https://shop.example/orders/x",
+				cancelUrl: "https://shop.example/orders/x",
+				payerIp: "203.0.113.9",
+			}),
+		).rejects.toMatchObject({ code: "payment_channel_mismatch" });
 	});
 
 	it.each([
