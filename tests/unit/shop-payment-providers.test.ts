@@ -254,8 +254,21 @@ describe("shop payment providers", () => {
 		).resolves.toMatchObject({
 			providerPaymentId: "trade-epay-1:11111111111141118111111111111111",
 			amountDecimal: "123.4500",
+			currency: "CNY",
 			merchantOrderId: "11111111111141118111111111111111",
 		});
+	});
+
+	it("refuses an EPay order in any currency but CNY", async () => {
+		const fetcher = vi.fn();
+		await expect(
+			epayPaymentProvider.createPayment(
+				paymentInput({ payerIp: "203.0.113.9", currency: "USD" }),
+				{ ...epusdtCredential(), paymentMethod: "alipay" },
+				fetcher,
+			),
+		).rejects.toMatchObject({ code: "payment_currency_unsupported" });
+		expect(fetcher).not.toHaveBeenCalled();
 	});
 
 	it("keeps generic EPay refunds manual and enables only the exact ZPAY origin", () => {
