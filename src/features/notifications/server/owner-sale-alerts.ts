@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+	type RestockSource,
+	restockLabel,
+	restockSourceSchema,
+	restockSources,
+} from "#/features/ops-automation/server/shared";
 import { saleComponents } from "#/features/redeem-warehouse/server/sale-capacity";
 import {
 	loadDeliveryWarehouseToken,
@@ -64,12 +70,6 @@ type Balance = {
 	currency: string;
 	currencyDecimals: number;
 	fresh: boolean;
-};
-
-type RestockSource = "86" | "xiaojiu";
-const restockLabel: Record<RestockSource, string> = {
-	"86": "86",
-	xiaojiu: "小九",
 };
 
 // Real 86 vault state, read once per alert after the sale.
@@ -544,7 +544,7 @@ export function formatStockLines(
 			return source ? [source] : [];
 		}),
 	);
-	for (const source of ["86", "xiaojiu"] as const) {
+	for (const source of restockSources) {
 		if (!sources.has(source)) continue;
 		const balance = snapshot.balances[source];
 		lines.push(
@@ -558,12 +558,13 @@ const warehouseSummarySchema = z.object({
 	success: z.literal(true),
 	faka_balance: z.union([z.string(), z.number()]).nullable().optional(),
 	xiaojiu_balance: z.union([z.string(), z.number()]).nullable().optional(),
+	aisou_balance: z.union([z.string(), z.number()]).nullable().optional(),
 	data: z.array(
 		z.object({
 			sku: z.string(),
 			available: z.number().int().nonnegative(),
 			auto_restock: z.boolean().optional(),
-			restock_source: z.enum(["86", "xiaojiu"]).nullable().optional(),
+			restock_source: restockSourceSchema,
 		}),
 	),
 });
@@ -587,6 +588,7 @@ async function readWarehouse(
 			"86": body.faka_balance == null ? null : String(body.faka_balance),
 			xiaojiu:
 				body.xiaojiu_balance == null ? null : String(body.xiaojiu_balance),
+			aisou: body.aisou_balance == null ? null : String(body.aisou_balance),
 		},
 		skus: Object.fromEntries(
 			body.data.map((row) => [

@@ -7,6 +7,7 @@ import {
 	formatYuan,
 	loadSettings,
 	type ProcurementStats,
+	type RestockSource,
 	resolveDeliver,
 	restockLabel,
 	settingStatement,
@@ -22,7 +23,7 @@ export const balanceGuardIntervalMs = 2 * 3_600_000;
 const weekMs = 7 * 86_400_000;
 const aisouOrigin = "https://aisou.pro";
 
-export type SupplierKey = "86" | "xiaojiu" | "aisou";
+export type SupplierKey = RestockSource;
 export type SupplierBalance = {
 	key: SupplierKey;
 	label: string;
@@ -32,7 +33,7 @@ export type SupplierBalance = {
 };
 
 export function supplierLabel(key: SupplierKey) {
-	return key === "aisou" ? "AISOU" : restockLabel[key];
+	return restockLabel[key];
 }
 
 /** Real AISOU numbers live in GMShop: stored account balance and supplied orders. */
@@ -86,7 +87,11 @@ export async function collectSupplierBalances(input: {
 		input.readStats().catch(() => null),
 		readAisouBalance(input.db, input.now),
 	]);
-	const suppliers: SupplierBalance[] = (stats?.suppliers ?? []).map((row) => ({
+	// GMShop's own AISOU account is the same wallet, so it wins over a warehouse copy.
+	const fromWarehouse = (stats?.suppliers ?? []).filter(
+		(row) => !(aisou && row.name === "aisou"),
+	);
+	const suppliers: SupplierBalance[] = fromWarehouse.map((row) => ({
 		key: row.name,
 		label: supplierLabel(row.name),
 		balanceMinor: row.balanceMinor,

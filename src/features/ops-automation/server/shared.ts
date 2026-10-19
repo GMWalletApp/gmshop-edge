@@ -198,11 +198,19 @@ export function resolveDeliver(
 // ---- Redeem warehouse procurement endpoints (optional; absent → null) ----
 
 const amountSchema = z.union([z.string(), z.number()]).nullable().optional();
-export type RestockSource = "86" | "xiaojiu";
+export const restockSources = ["86", "xiaojiu", "aisou"] as const;
+export type RestockSource = (typeof restockSources)[number];
 export const restockLabel: Record<RestockSource, string> = {
 	"86": "86",
 	xiaojiu: "小九",
+	aisou: "AISOU",
 };
+// A source added on the warehouse first reads as unknown (null) here instead of failing the whole report.
+export const restockSourceSchema = z
+	.enum(restockSources)
+	.nullable()
+	.optional()
+	.catch(null);
 
 const statsSchema = z.object({
 	success: z.literal(true),
@@ -210,7 +218,7 @@ const statsSchema = z.object({
 		suppliers: z
 			.array(
 				z.object({
-					name: z.enum(["86", "xiaojiu"]),
+					name: restockSourceSchema,
 					balance: amountSchema,
 					spend_7d: amountSchema,
 					purchases_7d: z.number().int().nonnegative().nullable().optional(),
@@ -222,7 +230,7 @@ const statsSchema = z.object({
 				z.object({
 					sku: z.string(),
 					available: z.number().int().nullable().optional(),
-					restock_source: z.enum(["86", "xiaojiu"]).nullable().optional(),
+					restock_source: restockSourceSchema,
 					unit_cost_latest: amountSchema,
 				}),
 			)
@@ -235,7 +243,7 @@ const pricesSchema = z.object({
 	data: z.array(
 		z.object({
 			sku: z.string(),
-			source: z.enum(["86", "xiaojiu"]),
+			source: restockSourceSchema,
 			price: amountSchema,
 		}),
 	),
@@ -269,12 +277,18 @@ async function warehouseGet(
 export function parseProcurementStats(body: unknown): ProcurementStats {
 	const parsed = statsSchema.parse(body).data;
 	return {
-		suppliers: parsed.suppliers.map((row) => ({
-			name: row.name,
-			balanceMinor: yuanToMinor(row.balance),
-			spend7dMinor: yuanToMinor(row.spend_7d) ?? 0,
-			purchases7d: row.purchases_7d ?? 0,
-		})),
+		suppliers: parsed.suppliers.flatMap((row) =>
+			row.name
+				? [
+						{
+							name: row.name,
+							balanceMinor: yuanToMinor(row.balance),
+							spend7dMinor: yuanToMinor(row.spend_7d) ?? 0,
+							purchases7d: row.purchases_7d ?? 0,
+						},
+					]
+				: [],
+		),
 		skus: Object.fromEntries(
 			parsed.skus.map((row) => [
 				row.sku,
@@ -285,11 +299,17 @@ export function parseProcurementStats(body: unknown): ProcurementStats {
 }
 
 export function parseProcurementPrices(body: unknown): ProcurementPrices {
-	return pricesSchema.parse(body).data.map((row) => ({
-		sku: row.sku,
-		source: row.source,
-		priceMinor: yuanToMinor(row.price),
-	}));
+	return pricesSchema.parse(body).data.flatMap((row) =>
+		row.source
+			? [
+					{
+						sku: row.sku,
+						source: row.source,
+						priceMinor: yuanToMinor(row.price),
+					},
+				]
+			: [],
+	);
 }
 
 export async function fetchProcurementStats(

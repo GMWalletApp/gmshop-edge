@@ -249,7 +249,7 @@ describe("owner sale alerts", { timeout: 30_000 }, () => {
 				now,
 				readBalance: async () => null,
 				readWarehouse: async () => ({
-					balances: { "86": "1620.5", xiaojiu: null },
+					balances: { "86": "1620.5", xiaojiu: null, aisou: null },
 					skus: { GPT_PLUS_IOS: { available: 0, source: "86" } },
 				}),
 				deliver: async (text) => {
@@ -546,7 +546,7 @@ it("shows storefront codes, real 86 credentials and a low-stock warning", () => 
 				},
 			],
 			{
-				balances: { "86": "1742", xiaojiu: "3888" },
+				balances: { "86": "1742", xiaojiu: "3888", aisou: null },
 				skus: {
 					CLAUDE_PRO_IOS: { available: 1, source: null },
 					GPT_PLUS_PH: { available: 0, source: "xiaojiu" },
@@ -558,5 +558,28 @@ it("shows storefront codes, real 86 credentials and a low-stock warning", () => 
 		"· 算力卡 · ¥50：剩余卡密 29",
 		"· Plus · 菲区：前台可售 68｜真实凭证 0（用完自动从 小九 进货）",
 		"小九 余额：¥3888.00",
+	]);
+});
+
+it("names AISOU restocks and its balance", () => {
+	expect(
+		formatStockLines(
+			[
+				{
+					fulfillment_source: "local",
+					low_stock_threshold: 0,
+					name: "Pro 500 · 智利区",
+					front_available: 3,
+					redeem_sku: "GPT_500_CHILE",
+				},
+			],
+			{
+				balances: { "86": null, xiaojiu: null, aisou: "1002" },
+				skus: { GPT_500_CHILE: { available: 0, source: "aisou" } },
+			},
+		),
+	).toEqual([
+		"· Pro 500 · 智利区：前台可售 3｜真实凭证 0（用完自动从 AISOU 进货）",
+		"AISOU 余额：¥1002.00",
 	]);
 });

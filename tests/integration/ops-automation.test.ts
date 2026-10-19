@@ -53,6 +53,34 @@ const prices = parseProcurementPrices({
 });
 
 describe("ops automation pure helpers", () => {
+	it("keeps the report when the warehouse names a source it does not know yet", () => {
+		const parsed = parseProcurementStats({
+			success: true,
+			data: {
+				suppliers: [
+					{ name: "86", balance: "1.00" },
+					{ name: "future", balance: "2.00" },
+				],
+				skus: [
+					{ sku: "GPT_500_CHILE", restock_source: "aisou" },
+					{ sku: "NEW", restock_source: "future" },
+				],
+			},
+		});
+		expect(parsed.suppliers.map((row) => row.name)).toEqual(["86"]);
+		expect(parsed.skus.GPT_500_CHILE?.restockSource).toBe("aisou");
+		expect(parsed.skus.NEW?.restockSource).toBeNull();
+		expect(
+			parseProcurementPrices({
+				success: true,
+				data: [
+					{ sku: "GPT_500_CHILE", source: "aisou", price: "3080.00" },
+					{ sku: "NEW", source: "future", price: "1.00" },
+				],
+			}),
+		).toEqual([{ sku: "GPT_500_CHILE", source: "aisou", priceMinor: 308000 }]);
+	});
+
 	it("parses money exactly and rounds retail prices up to 9 / 8", () => {
 		expect(yuanToMinor("12.3")).toBe(1230);
 		expect(yuanToMinor("12.301")).toBe(1231);
