@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { dispatchGitHubActionsBuild } from "#/features/builds/providers/github-actions";
 import { saveBuildConfiguration } from "#/features/builds/server/admin";
 import {
+	preflightAutomationArtifactUpload,
 	processAutomationCallback,
 	uploadAutomationArtifact,
 } from "#/features/builds/server/callback";
@@ -716,6 +717,47 @@ describe("build lifecycle", { timeout: 30_000 }, () => {
 				now,
 			),
 		).rejects.toMatchObject({ code: "automation_artifact_not_accepted" });
+		// The same decisions are made before the request body is read.
+		await expect(
+			preflightAutomationArtifactUpload(
+				database,
+				{ jobId: job.id, artifactId },
+				"12",
+			),
+		).rejects.toMatchObject({ code: "automation_artifact_not_accepted" });
+		await database
+			.prepare(
+				"UPDATE automation_jobs SET artifact_policy = 'optional' WHERE id = ?",
+			)
+			.bind(job.id)
+			.run();
+		await expect(
+			preflightAutomationArtifactUpload(
+				database,
+				{ jobId: job.id, artifactId },
+				"12",
+			),
+		).resolves.toBeUndefined();
+		await expect(
+			preflightAutomationArtifactUpload(
+				database,
+				{ jobId: job.id, artifactId },
+				String(100 * 1024 * 1024 + 1),
+			),
+		).rejects.toMatchObject({ code: "request_too_large", status: 413 });
+		await expect(
+			preflightAutomationArtifactUpload(
+				database,
+				{ jobId: "00000000-0000-4000-8000-00000000abcd", artifactId },
+				null,
+			),
+		).rejects.toMatchObject({ code: "automation_job_not_found" });
+		await database
+			.prepare(
+				"UPDATE automation_jobs SET artifact_policy = 'none' WHERE id = ?",
+			)
+			.bind(job.id)
+			.run();
 		const noneBody = JSON.stringify({ jobId: job.id, status: "succeeded" });
 		await expect(
 			processAutomationCallback(
