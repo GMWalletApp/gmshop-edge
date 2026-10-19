@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { constantTimeEqual } from "#/lib/crypto";
+import { requireRestockAuthorization } from "#/features/catalog/server/restock-api";
 import { DomainError } from "#/lib/domain-error";
 import { claimFixedWindowRateLimit } from "#/server/rate-limit";
 import type { CloudflareBindings } from "#/server/runtime/cloudflare";
@@ -28,10 +28,7 @@ export async function handleRedeemRestockRequest(
 				503,
 				"Restock API unavailable",
 			);
-		const header = request.headers.get("authorization") ?? "";
-		const supplied = header.startsWith("Bearer ") ? header.slice(7) : "";
-		if (!supplied || !constantTimeEqual(supplied, env.RESTOCK_API_TOKEN))
-			throw new DomainError("restock_unauthorized", 401, "Invalid credentials");
+		await requireRestockAuthorization(request, db, env.RESTOCK_API_TOKEN);
 		if (request.method !== "POST")
 			return new Response(null, { status: 405, headers: { Allow: "POST" } });
 		const budget = await claimFixedWindowRateLimit(db, {

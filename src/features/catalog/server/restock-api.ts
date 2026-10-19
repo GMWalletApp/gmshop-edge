@@ -70,7 +70,7 @@ export async function handleRestockApiRequest(
 				503,
 				"Restock API unavailable",
 			);
-		requireAuthorization(request, env.RESTOCK_API_TOKEN);
+		await requireRestockAuthorization(request, db, env.RESTOCK_API_TOKEN);
 		const ipAddress = request.headers.get("cf-connecting-ip") ?? "unknown";
 		const budget = await claimFixedWindowRateLimit(db, {
 			bucketKey: `restock-api:${ipAddress}`,
@@ -120,7 +120,7 @@ export async function handleDeliveryReconcileRequest(
 				503,
 				"Restock API unavailable",
 			);
-		requireAuthorization(request, env.RESTOCK_API_TOKEN);
+		await requireRestockAuthorization(request, db, env.RESTOCK_API_TOKEN);
 		const budget = await claimFixedWindowRateLimit(db, {
 			bucketKey: `restock-reconcile:${request.headers.get("cf-connecting-ip") ?? "unknown"}`,
 			limit: 10,
@@ -576,11 +576,24 @@ async function inventoryCounts(db: D1Database, componentId: string) {
 	};
 }
 
-function requireAuthorization(request: Request, expected: string) {
+// Wrong tokens are budgeted per source IP (shared by every endpoint that
+// accepts RESTOCK_API_TOKEN) so the token cannot be guessed at line rate.
+export async function requireRestockAuthorization(
+	request: Request,
+	db: D1Database,
+	expected: string,
+) {
 	const header = request.headers.get("authorization") ?? "";
 	const supplied = header.startsWith("Bearer ") ? header.slice(7) : "";
-	if (!supplied || !constantTimeEqual(supplied, expected))
-		throw new DomainError("restock_unauthorized", 401, "Invalid credentials");
+	if (supplied && constantTimeEqual(supplied, expected)) return;
+	const budget = await claimFixedWindowRateLimit(db, {
+		bucketKey: `restock-api:auth-failure:${request.headers.get("cf-connecting-ip") ?? "unknown"}`,
+		limit: 10,
+		windowMs: 60_000,
+	});
+	if (!budget.allowed)
+		throw new DomainError("restock_rate_limited", 429, "Rate limit exceeded");
+	throw new DomainError("restock_unauthorized", 401, "Invalid credentials");
 }
 
 function publicComponent(component: ComponentRow) {
