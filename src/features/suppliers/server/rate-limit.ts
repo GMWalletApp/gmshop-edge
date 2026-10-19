@@ -51,6 +51,20 @@ export async function claimSupplierCallbackBudget(
 	return result.allowed;
 }
 
+export async function claimSupplierCallbackFailureBudget(
+	db: D1Database,
+	ip: string,
+	now?: number,
+) {
+	const result = await claimFixedWindowRateLimit(db, {
+		bucketKey: `supplier:callback-failure:ip:${ip}`,
+		limit: 30,
+		windowMs: WINDOW_MS,
+		now,
+	});
+	return result.allowed;
+}
+
 async function sourceDigest(input: {
 	provider: string;
 	normalizedApiOrigin: string;

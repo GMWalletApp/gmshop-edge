@@ -1626,6 +1626,19 @@ describe("supplier fulfillment", { timeout: 30_000 }, () => {
 			ok: false,
 			message: "authentication_failed",
 		});
+		// The forged callback was budgeted by source, not against the account.
+		expect(
+			await db
+				.prepare(
+					"SELECT bucket_key, SUM(count) AS used FROM rate_limit_counters WHERE bucket_key LIKE 'supplier:callback%' GROUP BY bucket_key ORDER BY bucket_key",
+				)
+				.all(),
+		).toMatchObject({
+			results: [
+				{ bucket_key: "supplier:callback-failure:ip:unknown", used: 1 },
+				{ bucket_key: "supplier:callback:account", used: 2 },
+			],
+		});
 		const latePayload = { ...payload, event: "order.fulfilled.late" };
 		const lateRawBody = JSON.stringify(latePayload);
 		const lateSignature = signDujiaoNextRequest({
