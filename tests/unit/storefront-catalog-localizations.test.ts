@@ -34,30 +34,35 @@ describe("storefront catalog localizations", () => {
 		);
 		expect(item.policy.deliveryTime).toContain("1–30 minutes");
 		expect(item.policy.deliveryTime).toContain("3 hours");
-		expect(item.policy.coverage).toContain("Renewal is supported");
+		expect(item.policy.coverage).toContain("Replacement supported");
 	});
 });
 
-it("uses dollar-tier names without retired qualification and matches standard $500 delivery", () => {
-	const ph = localizeSellableItem(
-		"0829de43-da22-420c-9866-38c83dd420f0",
+it("names every ChatGPT plan in English, grouped as plan｜channel｜term", () => {
+	const ids = {
+		"21859feb-e4d5-469f-9ca8-11fa4b9e5d18": "ChatGPT Pro 100｜Chile｜1 month",
+		"0829de43-da22-420c-9866-38c83dd420f0":
+			"ChatGPT Pro 200｜Philippines new｜1 month",
+		"030582df-98c1-5b87-914d-28ddc606e163":
+			"ChatGPT Pro 500｜Philippines｜1 month",
+		"521968d1-5c64-45bf-a4bc-7df906dcc1cb": "ChatGPT Pro 500｜Chile｜1 month",
+		"ceab0998-9dc1-4f3e-94e4-a8332a311eaf":
+			"ChatGPT Business｜2 Standard seats｜1 month",
+		"30754dc5-5ba6-4923-9527-62dd91b8e19e":
+			"ChatGPT Business｜Premium + Standard seat｜1 month",
+	};
+	for (const [id, name] of Object.entries(ids)) {
+		const item = localizeSellableItem(id, "en-US", fallback);
+		expect(item.name).toBe(name);
+		expect(`${item.name}${Object.values(item.policy).join("")}`).not.toMatch(
+			/[\u4e00-\u9fff]/,
+		);
+	}
+	const chile = localizeSellableItem(
+		"521968d1-5c64-45bf-a4bc-7df906dcc1cb",
 		"en-US",
 		fallback,
 	);
-	const cl = localizeSellableItem(
-		"030582df-98c1-5b87-914d-28ddc606e163",
-		"en-US",
-		fallback,
-	);
-	expect(ph.name).toContain("$200");
-	expect(ph.policy.restrictions).not.toMatch(
-		/eligibility|Upgrade to Pro|clickable/i,
-	);
-	expect(cl.name).toContain("$500");
-	expect(cl.policy.delivery).toBe(
-		"Processed online after payment confirmation",
-	);
-	expect(cl.policy.deliveryTime).toBe(ph.policy.deliveryTime);
-	expect(cl.policy.deliveryTime).toContain("1–30 minutes");
-	expect(cl.policy.coverage).toContain("No active Go, Plus, or Pro");
+	expect(chile.policy.delivery).toBe("24/7 automatic delivery");
+	expect(chile.policy.coverage).toContain("must currently be on Free");
 });

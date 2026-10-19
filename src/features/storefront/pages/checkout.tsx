@@ -59,6 +59,7 @@ import {
 	claudeRechargeProductId,
 } from "#/features/storefront/components/claude-purchase-guide";
 import { writeGuestOrderEmail } from "#/features/storefront/order-access-storage";
+import { paymentChannelLabel } from "#/features/storefront/payment-channel-label";
 import { safeStorePaymentUrl } from "#/features/storefront/payment-url";
 import {
 	getStoreCartFn,
@@ -903,7 +904,7 @@ export function StorefrontCheckoutPage() {
 												providerId={channel.provider}
 											/>
 											<span className="font-medium leading-snug">
-												{channel.name}
+												{paymentChannelLabel(channel.name)}
 											</span>
 											{currencyItem && "currency" in currencyItem ? (
 												<span className="font-medium text-primary text-xs">

@@ -52,6 +52,7 @@ import {
 	StorefrontProductCard,
 	StorefrontProductCardSkeleton,
 } from "#/features/storefront/components/product-card";
+import { paymentChannelLabel } from "#/features/storefront/payment-channel-label";
 import { purchaseMaximum } from "#/features/storefront/product-quantity";
 import {
 	getStorefrontProductFn,
@@ -1017,7 +1018,7 @@ function SellableItemSummary({ sellableItem }: { sellableItem: SellableItem }) {
 											alipay && "text-amber-700 dark:text-amber-300",
 										)}
 									>
-										{channel.name}
+										{paymentChannelLabel(channel.name)}
 									</span>
 									{channel.feeBps > 0 ? (
 										<span className="text-muted-foreground text-[11px]">
@@ -1177,7 +1178,7 @@ export function groupPlans(items: SellableItem[]) {
 		const parts = item.name.split("｜").map((part) => part.trim());
 		const variant = parts
 			.slice(1)
-			.filter((part) => !/^\d+\s*个?月$/.test(part));
+			.filter((part) => !/^\d+\s*(?:个?月|months?)$/i.test(part));
 		return {
 			item,
 			plan: parts[0] ?? item.name,

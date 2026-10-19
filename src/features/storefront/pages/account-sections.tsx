@@ -1,4 +1,5 @@
 import { PromotionAccount } from "#/features/promotions/account";
+import { paymentChannelLabel } from "#/features/storefront/payment-channel-label";
 
 ("use client");
 
@@ -211,7 +212,7 @@ function WalletSummaryCard() {
 					fieldProps: {
 						options:
 							channels.data?.map((channel) => ({
-								label: channel.name,
+								label: paymentChannelLabel(channel.name),
 								value: channel.id,
 							})) ?? [],
 					},

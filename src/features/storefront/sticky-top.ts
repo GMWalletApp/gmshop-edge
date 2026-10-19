@@ -23,11 +23,12 @@ export function useFitStickyTop(headerOffset: number) {
 		const update = () =>
 			setTop(stickyTop(element.offsetHeight, window.innerHeight, headerOffset));
 		update();
-		const observer = new ResizeObserver(update);
-		observer.observe(element);
+		const observer =
+			typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+		observer?.observe(element);
 		window.addEventListener("resize", update);
 		return () => {
-			observer.disconnect();
+			observer?.disconnect();
 			window.removeEventListener("resize", update);
 		};
 	}, [element, headerOffset]);

@@ -6,6 +6,8 @@ import {
 	ChevronRight,
 	ExternalLink,
 	Headphones,
+	Languages,
+	Menu,
 	MessageCircle,
 	Send,
 	Settings,
@@ -30,8 +32,10 @@ import { webSupportOpenEvent } from "#/features/telegram/web-support-contract";
 import useDialogState from "#/hooks/use-dialog-state";
 import { AppTitle } from "#/layouts/components/app-title";
 import { SignOutDialog } from "#/layouts/components/sign-out-dialog";
+import { localeLabels } from "#/lib/locales";
 import { cn } from "#/lib/utils";
 import { m } from "#/paraglide/messages";
+import { getLocale, locales, setLocale } from "#/paraglide/runtime";
 import {
 	AccountSettingsPanel,
 	type HeaderUser,
@@ -77,15 +81,17 @@ export function PublicHeader() {
 				<Link className="min-w-0 max-w-[40%] lg:max-w-none" to="/">
 					<AppTitle />
 				</Link>
-				<div className="ms-auto flex shrink-0 items-center">
-					<nav className="me-1 flex items-center gap-2 text-muted-foreground text-sm lg:me-6 lg:gap-6">
+				{/* Phones: one-tap language switch plus a menu; the full bar does not fit. */}
+				<div className="ms-auto flex shrink-0 items-center gap-1 lg:hidden">
+					<QuickLocaleToggle />
+					<MobileMenu navigation={navigation} />
+				</div>
+				<div className="ms-auto hidden shrink-0 items-center lg:flex">
+					<nav className="me-6 flex items-center gap-6 text-muted-foreground text-sm">
 						{navigation.map(([label, href]) => (
 							<a
 								className={cn(
 									"whitespace-nowrap py-2 transition-colors hover:text-foreground",
-									href !== "/invoice" &&
-										href !== "/account" &&
-										"hidden lg:block",
 									href === "/account" &&
 										"rounded-full bg-primary px-2 font-semibold text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
 								)}
@@ -98,19 +104,126 @@ export function PublicHeader() {
 					</nav>
 					<div className="flex items-center gap-1 ps-1">
 						<CustomerSupport />
-						<div className="hidden items-center gap-1 lg:flex">
-							<CartAction />
-							<DesktopSettings
-								currencySelection={currencySelection}
-								root={adminEntry.data?.root}
-								user={headerUser}
-							/>
-							{user ? null : <SignInAction />}
-						</div>
+						<CartAction />
+						<DesktopSettings
+							currencySelection={currencySelection}
+							root={adminEntry.data?.root}
+							user={headerUser}
+						/>
+						{user ? null : <SignInAction />}
 					</div>
 				</div>
 			</div>
 		</header>
+	);
+}
+
+/** Switches straight to the other language; the label names the target in its own script. */
+function QuickLocaleToggle() {
+	const current = getLocale();
+	const target = locales.find((locale) => locale !== current) ?? current;
+	return (
+		<Button
+			aria-label={m.switch_language()}
+			className="h-8 gap-1.5 rounded-full px-3 text-xs"
+			onClick={() => setLocale(target)}
+			variant="outline"
+		>
+			<Languages className="size-3.5" />
+			{target === "zh-CN" ? "中文" : "EN"}
+		</Button>
+	);
+}
+
+function MobileMenu({
+	navigation,
+}: {
+	navigation: Array<readonly [string, string]>;
+}) {
+	const [open, setOpen] = useState(false);
+	const current = getLocale();
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<Button
+					aria-label={m.store_menu()}
+					className="rounded-full"
+					size="icon"
+					variant="ghost"
+				>
+					<Menu />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent
+				align="end"
+				className="w-80 max-w-[calc(100vw-1.5rem)] p-2"
+			>
+				<nav className="grid">
+					{navigation
+						.filter(([, href]) => href !== "/")
+						.map(([label, href]) => (
+							<a
+								className={cn(
+									"flex items-center justify-between rounded-xl px-3 py-3 font-medium text-sm transition-colors hover:bg-muted",
+									href === "/account" && "text-primary",
+								)}
+								href={href}
+								key={href}
+							>
+								{label}
+								<ChevronRight className="size-4 text-muted-foreground" />
+							</a>
+						))}
+				</nav>
+				<div className="my-2 border-border/70 border-t" />
+				<p className="px-3 pt-1 pb-1 font-medium text-muted-foreground text-xs">
+					{m.store_support()}
+				</p>
+				<SupportAction
+					description={m.store_support_online_description()}
+					icon={MessageCircle}
+					label={m.store_support_online()}
+					onClick={() => {
+						setOpen(false);
+						window.dispatchEvent(new Event(webSupportOpenEvent));
+					}}
+				/>
+				<SupportLink
+					description="@laoshirengroup"
+					href={telegramGroupUrl}
+					icon={Users}
+					label={m.store_support_group()}
+				/>
+				<SupportLink
+					description="@laoshirenai_support_bot"
+					href={telegramSupportUrl}
+					icon={Send}
+					label={m.store_support_private()}
+				/>
+				<div className="my-2 border-border/70 border-t" />
+				<div className="flex items-center justify-between gap-3 px-3 py-2">
+					<span className="flex items-center gap-2 font-medium text-sm">
+						<Languages className="size-4 text-primary" />
+						{m.switch_language()}
+					</span>
+					<div className="flex rounded-full bg-muted p-0.5">
+						{locales.map((locale) => (
+							<button
+								aria-pressed={locale === current}
+								className="rounded-full px-3 py-1 text-xs transition-colors aria-pressed:bg-background aria-pressed:font-semibold aria-pressed:shadow-sm"
+								key={locale}
+								onClick={() => {
+									if (locale !== current) setLocale(locale);
+								}}
+								type="button"
+							>
+								{localeLabels[locale]}
+							</button>
+						))}
+					</div>
+				</div>
+			</PopoverContent>
+		</Popover>
 	);
 }
 

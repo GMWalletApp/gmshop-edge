@@ -761,7 +761,6 @@
 	"store_local_delivery": "自动交付",
 	"store_mixed_delivery": "按规格自动或在线快速交付",
 	"store_sku_policy_delivery": "交付方式",
-	"store_sku_policy_delivery_time": "交付时效",
 	"store_supplier_delivery_time": "秒发",
 	"store_usage_guide_title": "使用教程",
 	"store_usage_guide_auto_intro": "付款成功后，订单会自动显示充值卡密和充值地址。复制卡密并进入该地址，按页面提示提交即可。",
@@ -2402,5 +2401,6 @@
 	"store_chatgpt_region_card_rule": "账号必须是 Free 状态（没有任何正在生效的订阅）才能开通。加入了 Team 工作区的账号要先退出；手机渠道订阅到期后需再等 2–3 天。",
 	"store_chatgpt_region_card_plans": "菲区 Plus / Pro 100 / Pro 200 新开 / Pro 500、智利区 Pro 100 / Pro 500、Business",
 	"store_chatgpt_region_renewal_rule": "账号当前就是菲区 Pro 200 订阅（账单 PHP 8,919.64）。在到期前一天购买并提交，上个月订阅到期后自动续上；不支持升级。",
-	"store_product_intro": "商品介绍"
+	"store_product_intro": "商品介绍",
+	"store_menu": "菜单"
 }
