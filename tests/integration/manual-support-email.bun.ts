@@ -288,12 +288,17 @@ test("only explicit Telegram callback wires sending; mobile copy and header cont
 		"客服回复了会通过邮件提醒你返回网页继续沟通。",
 	);
 	const header = readFileSync("src/layouts/public/header.tsx", "utf8");
-	expect(
-		header.slice(header.indexOf("<header"), header.indexOf("<nav")),
-	).not.toMatch(/\bhidden\b/);
-	expect(header.replace(/\s+/g, " ")).toContain(
-		'href !== "/invoice" && href !== "/account" && "hidden lg:block"',
+	// Phones get support from the menu (web chat, group, bot); desktops keep the header button.
+	const mobileMenu = header.slice(
+		header.indexOf("function MobileMenu("),
+		header.indexOf("export function DeliveryTicker("),
 	);
+	expect(mobileMenu).toContain(
+		"window.dispatchEvent(new Event(webSupportOpenEvent))",
+	);
+	expect(mobileMenu).toContain("href={telegramGroupUrl}");
+	expect(mobileMenu).toContain("href={telegramSupportUrl}");
+	expect(header).toContain("<MobileMenu navigation={navigation} />");
 	expect(header).toContain("<CustomerSupport />");
 });
 

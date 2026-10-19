@@ -12,8 +12,22 @@ describe("SSR render data boundaries", () => {
 			"src/features/dashboard/pages/tasks.tsx",
 		]);
 		expect(ownersOf("queryClient.prefetchQuery(")).toEqual([
+			"src/routes/admin/agents.tsx",
 			"src/routes/admin/index.tsx",
 		]);
+		// The agent table is awaited for SSR; secondary agent-program reads never gate it.
+		const agentsRoute = read("src/routes/admin/agents.tsx");
+		expect(agentsRoute).toContain(
+			"await context.queryClient.prefetchQuery(agentsQuery(month))",
+		);
+		for (const query of [
+			"leaderboardQuery(month)",
+			"withdrawalsQuery()",
+			"rulesQuery()",
+		])
+			expect(agentsRoute).toContain(
+				`void context.queryClient.prefetchQuery(${query})`,
+			);
 		const dashboardRoute = read("src/routes/admin/index.tsx");
 		expect(dashboardRoute).toContain(
 			"void context.queryClient.prefetchQuery(dashboardQuery)",

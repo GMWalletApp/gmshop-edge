@@ -6,6 +6,7 @@ const root = resolve(import.meta.dirname, "../..");
 
 const adminServerModules = [
 	"src/features/agent-access/server/admin.ts",
+	"src/features/agent-program/server/admin.ts",
 	"src/features/access/server/admin.ts",
 	"src/features/auth/server/provider-admin.ts",
 	"src/features/builds/server/admin.ts",
