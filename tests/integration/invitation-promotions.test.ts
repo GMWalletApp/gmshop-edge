@@ -152,6 +152,22 @@ describe("invitation and personal recall checkout", { timeout: 30000 }, () => {
 			promotion_purpose: "referral",
 		});
 	});
+	it("keeps the discount but pays no reward when a guest order looks like the referrer's own", async () => {
+		const code = await openReferralCoupon(db, promoter);
+		const created = await createMultiStoreOrder(db, {
+			email: "Promoter+alt@example.com",
+			couponCode: code.code,
+			idempotencyKey: crypto.randomUUID(),
+			items: [{ sellableItemId: sku, quantity: 1 }],
+		});
+		expect(created.totalMinor).toBe("107600");
+		expect(
+			await db
+				.prepare("SELECT referral_reward_minor FROM shop_orders WHERE id=?")
+				.bind(created.id)
+				.first(),
+		).toEqual({ referral_reward_minor: "0" });
+	});
 	it("rejects identified self-referrals", async () => {
 		const code = await openReferralCoupon(db, promoter);
 		await expect(order(code.code, promoter)).rejects.toThrow(/own invitation/);

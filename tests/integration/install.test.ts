@@ -69,6 +69,7 @@ describe("GMShop installation", { timeout: 30_000 }, () => {
 			"0034_web_support_feishu_throttle.sql",
 			"0035_supplier_api_downstream_buyer.sql",
 			"0036_recall_email_coupons.sql",
+			"0037_order_pricing_channel.sql",
 		]);
 		const legacyTables = await database
 			.prepare(

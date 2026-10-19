@@ -247,6 +247,15 @@ export async function createMultiStoreOrder(
 		: null;
 	const priced = await priceStoreCoupon(db, coupon, lines);
 	const promotion = coupon && coupon.purpose !== "standard" ? priced : null;
+	// The buyer keeps the referral discount; the referrer earns nothing on what looks like their own purchase.
+	const withholdReferralReward =
+		promotion && coupon?.purpose === "referral" && coupon.referrer_user_id
+			? await referralRewardWithheld(db, coupon.referrer_user_id, {
+					email: normalizedContactEmail,
+					ip: access.clientIp,
+					rewardMinor: BigInt(promotion.rewardMinor),
+				})
+			: false;
 	const discount = BigInt(priced.discountMinor);
 	const total = subtotal - discount;
 	if (
@@ -507,7 +516,7 @@ export async function createMultiStoreOrder(
 				.bind(
 					coupon.purpose,
 					coupon.referrer_user_id,
-					promotion.rewardMinor,
+					withholdReferralReward ? "0" : promotion.rewardMinor,
 					orderId,
 				),
 		);
@@ -517,7 +526,7 @@ export async function createMultiStoreOrder(
 					.prepare(
 						"UPDATE shop_order_items SET referral_reward_minor = ? WHERE id = ?",
 					)
-					.bind(line.rewardMinor, line.id),
+					.bind(withholdReferralReward ? "0" : line.rewardMinor, line.id),
 			);
 	}
 	try {
@@ -1245,4 +1254,64 @@ async function claimNewOrderBudget(
 			429,
 			"Too many orders. Please try again later.",
 		);
+}
+
+// A referrer earns at most this much per calendar month (Beijing time); anything beyond is withheld.
+const referralRewardMonthlyCapMinor = 100_000n;
+
+/** Same person behind the order (email up to a +tag, or an IP the referrer signed in from), or the monthly cap is reached. */
+async function referralRewardWithheld(
+	db: D1Database,
+	referrerUserId: string,
+	buyer: {
+		email: string | null | undefined;
+		ip: string | null | undefined;
+		rewardMinor: bigint;
+	},
+) {
+	const owner = await db
+		.prepare("SELECT email FROM users WHERE id = ?")
+		.bind(referrerUserId)
+		.first<{ email: string }>();
+	if (
+		owner &&
+		buyer.email &&
+		canonicalEmail(owner.email) === canonicalEmail(buyer.email)
+	)
+		return true;
+	const ip = buyer.ip?.trim();
+	if (
+		ip &&
+		(await db
+			.prepare(
+				"SELECT 1 FROM sessions WHERE user_id = ? AND ip_address = ? LIMIT 1",
+			)
+			.bind(referrerUserId, ip)
+			.first())
+	)
+		return true;
+	const beijingMonthStart =
+		Date.UTC(
+			new Date(Date.now() + 8 * 3_600_000).getUTCFullYear(),
+			new Date(Date.now() + 8 * 3_600_000).getUTCMonth(),
+			1,
+		) -
+		8 * 3_600_000;
+	const earned = await db
+		.prepare(
+			`SELECT COALESCE(SUM(CAST(referral_reward_minor AS INTEGER)), 0) AS total FROM shop_orders
+			 WHERE referrer_user_id = ? AND created_at >= ?
+			  AND status IN ('pending_payment','paid','fulfilling','completed')`,
+		)
+		.bind(referrerUserId, beijingMonthStart)
+		.first<{ total: number }>();
+	return (
+		BigInt(earned?.total ?? 0) + buyer.rewardMinor >
+		referralRewardMonthlyCapMinor
+	);
+}
+
+function canonicalEmail(email: string) {
+	const [local = "", domain = ""] = email.trim().toLowerCase().split("@");
+	return `${local.split("+")[0]}@${domain}`;
 }
