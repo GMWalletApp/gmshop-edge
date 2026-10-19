@@ -2400,7 +2400,7 @@
 	"store_chatgpt_region_ios_plans": "Go, Plus iOS, Pro 100 iOS, Pro 200 iOS",
 	"store_chatgpt_region_card_title": "Card-pay channels",
 	"store_chatgpt_region_card_rule": "The account must be on the Free plan (no active subscription). Leave any Team workspace first; after a mobile-channel subscription expires, wait 2–3 days.",
-	"store_chatgpt_region_card_plans": "Philippines Plus / Pro 100 / Pro 200 new / Pro 500, Chile Pro 100, Business",
+	"store_chatgpt_region_card_plans": "Philippines Plus / Pro 100 / Pro 200 new / Pro 500, Chile Pro 100 / Pro 500, Business",
 	"store_chatgpt_region_renewal_rule": "Your account is currently on Philippines Pro 200 (billed at PHP 8,919.64). Buy and submit one day before it expires; it renews automatically when the current month ends. No upgrades.",
 	"store_product_intro": "About this product"
 }
