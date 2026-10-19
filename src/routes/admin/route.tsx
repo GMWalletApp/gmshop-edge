@@ -59,7 +59,7 @@ function AdminLayoutRoute() {
 	const pageScroll = pathname === "/admin" || pathname === "/admin/";
 	return (
 		<DashboardLayout
-			navigation={systemSidebarData(systemAccess.permissions)}
+			navigation={systemSidebarData(systemAccess.permissions, user.roles)}
 			permissions={systemAccess.permissions}
 			pageScroll={pageScroll}
 			user={user}

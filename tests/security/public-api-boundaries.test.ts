@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { handleOrderProfitRequest } from "#/features/agent-program/server/order-profit";
 import {
 	isPublicApiRequest,
 	isSameOriginRequest,
@@ -21,6 +22,30 @@ describe("signed and customer API boundaries", () => {
 		expect(publicRequest("/api/v1/supplier", "GET")).toBe(false);
 		expect(publicRequest("/api/v1/supplier/", "POST")).toBe(false);
 		expect(publicRequest("/api/v1/supplier/ping", "PATCH")).toBe(false);
+	});
+
+	it("lets only the exact profit POST reach its own bearer guard without browser headers", async () => {
+		const path = "/api/internal/agent-program/order-profit";
+		const request = new Request(`https://pay.example${path}`, {
+			method: "POST",
+		});
+		expect(isSameOriginRequest(request)).toBe(false);
+		expect(isPublicApiRequest(request)).toBe(true);
+		const response = await handleOrderProfitRequest(request, {
+			AGENT_PROGRAM_PROFIT_TOKEN: "synthetic-profit-token",
+		});
+		expect(response.status).toBe(401);
+		for (const method of ["GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"])
+			expect(publicRequest(path, method), method).toBe(false);
+		for (const otherPath of [
+			`${path}/`,
+			`${path}/extra`,
+			`${path}-extra`,
+			"/api/internal/agent-program",
+			"/api/internal/agent-program/agents",
+			"/api/internal/other",
+		])
+			expect(publicRequest(otherPath, "POST"), otherPath).toBe(false);
 	});
 
 	it("lets the exact bearer-authenticated restock route reach its own guard", () => {

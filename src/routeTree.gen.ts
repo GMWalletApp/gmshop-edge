@@ -24,6 +24,7 @@ import { Route as AdminDeliveryRouteImport } from './routes/admin/delivery'
 import { Route as AdminCouponsRouteImport } from './routes/admin/coupons'
 import { Route as AdminAutomationRouteImport } from './routes/admin/automation'
 import { Route as AdminAuthRouteImport } from './routes/admin/auth'
+import { Route as AdminAgentsRouteImport } from './routes/admin/agents'
 import { Route as publicStatusRouteImport } from './routes/(public)/status'
 import { Route as publicMeRouteImport } from './routes/(public)/me'
 import { Route as publicIpCheckRouteImport } from './routes/(public)/ip-check'
@@ -113,6 +114,7 @@ import { Route as ApiSupportWebCloseRouteImport } from './routes/api/support/web
 import { Route as ApiShopRenewalUnsubscribeRouteImport } from './routes/api/shop/renewal/unsubscribe'
 import { Route as ApiShopAutomationCallbackRouteImport } from './routes/api/shop/automation/callback'
 import { Route as ApiOpsRestockReconcileRouteImport } from './routes/api/ops/restock/reconcile'
+import { Route as ApiInternalAgentProgramOrderProfitRouteImport } from './routes/api/internal/agent-program/order-profit'
 import { Route as ApiConfigurationLogoScopeIdRouteImport } from './routes/api/configuration-logo/$scope/$id'
 import { Route as AdminProductsProductIdEditRouteImport } from './routes/admin/products/$productId/edit'
 import { Route as publicAccountOrdersOrderNumberRouteImport } from './routes/(public)/account/orders/$orderNumber'
@@ -203,6 +205,11 @@ const AdminAutomationRoute = AdminAutomationRouteImport.update({
 const AdminAuthRoute = AdminAuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminAgentsRoute = AdminAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const publicStatusRoute = publicStatusRouteImport.update({
@@ -667,6 +674,12 @@ const ApiOpsRestockReconcileRoute = ApiOpsRestockReconcileRouteImport.update({
   path: '/reconcile',
   getParentRoute: () => ApiOpsRestockRoute,
 } as any)
+const ApiInternalAgentProgramOrderProfitRoute =
+  ApiInternalAgentProgramOrderProfitRouteImport.update({
+    id: '/api/internal/agent-program/order-profit',
+    path: '/api/internal/agent-program/order-profit',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiConfigurationLogoScopeIdRoute =
   ApiConfigurationLogoScopeIdRouteImport.update({
     id: '/api/configuration-logo/$scope/$id',
@@ -794,6 +807,7 @@ export interface FileRoutesByFullPath {
   '/ip-check': typeof publicIpCheckRoute
   '/me': typeof publicMeRoute
   '/status': typeof publicStatusRoute
+  '/admin/agents': typeof AdminAgentsRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/admin/coupons': typeof AdminCouponsRoute
@@ -863,6 +877,7 @@ export interface FileRoutesByFullPath {
   '/account/orders/$orderNumber': typeof publicAccountOrdersOrderNumberRoute
   '/admin/products/$productId/edit': typeof AdminProductsProductIdEditRoute
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
+  '/api/internal/agent-program/order-profit': typeof ApiInternalAgentProgramOrderProfitRoute
   '/api/ops/restock/reconcile': typeof ApiOpsRestockReconcileRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
   '/api/shop/renewal/unsubscribe': typeof ApiShopRenewalUnsubscribeRoute
@@ -907,6 +922,7 @@ export interface FileRoutesByTo {
   '/ip-check': typeof publicIpCheckRoute
   '/me': typeof publicMeRoute
   '/status': typeof publicStatusRoute
+  '/admin/agents': typeof AdminAgentsRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/admin/coupons': typeof AdminCouponsRoute
@@ -975,6 +991,7 @@ export interface FileRoutesByTo {
   '/account/orders/$orderNumber': typeof publicAccountOrdersOrderNumberRoute
   '/admin/products/$productId/edit': typeof AdminProductsProductIdEditRoute
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
+  '/api/internal/agent-program/order-profit': typeof ApiInternalAgentProgramOrderProfitRoute
   '/api/ops/restock/reconcile': typeof ApiOpsRestockReconcileRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
   '/api/shop/renewal/unsubscribe': typeof ApiShopRenewalUnsubscribeRoute
@@ -1030,6 +1047,7 @@ export interface FileRoutesById {
   '/(public)/ip-check': typeof publicIpCheckRoute
   '/(public)/me': typeof publicMeRoute
   '/(public)/status': typeof publicStatusRoute
+  '/admin/agents': typeof AdminAgentsRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/admin/coupons': typeof AdminCouponsRoute
@@ -1099,6 +1117,7 @@ export interface FileRoutesById {
   '/(public)/account/orders/$orderNumber': typeof publicAccountOrdersOrderNumberRoute
   '/admin/products/$productId/edit': typeof AdminProductsProductIdEditRoute
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
+  '/api/internal/agent-program/order-profit': typeof ApiInternalAgentProgramOrderProfitRoute
   '/api/ops/restock/reconcile': typeof ApiOpsRestockReconcileRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
   '/api/shop/renewal/unsubscribe': typeof ApiShopRenewalUnsubscribeRoute
@@ -1153,6 +1172,7 @@ export interface FileRouteTypes {
     | '/ip-check'
     | '/me'
     | '/status'
+    | '/admin/agents'
     | '/admin/auth'
     | '/admin/automation'
     | '/admin/coupons'
@@ -1222,6 +1242,7 @@ export interface FileRouteTypes {
     | '/account/orders/$orderNumber'
     | '/admin/products/$productId/edit'
     | '/api/configuration-logo/$scope/$id'
+    | '/api/internal/agent-program/order-profit'
     | '/api/ops/restock/reconcile'
     | '/api/shop/automation/callback'
     | '/api/shop/renewal/unsubscribe'
@@ -1266,6 +1287,7 @@ export interface FileRouteTypes {
     | '/ip-check'
     | '/me'
     | '/status'
+    | '/admin/agents'
     | '/admin/auth'
     | '/admin/automation'
     | '/admin/coupons'
@@ -1334,6 +1356,7 @@ export interface FileRouteTypes {
     | '/account/orders/$orderNumber'
     | '/admin/products/$productId/edit'
     | '/api/configuration-logo/$scope/$id'
+    | '/api/internal/agent-program/order-profit'
     | '/api/ops/restock/reconcile'
     | '/api/shop/automation/callback'
     | '/api/shop/renewal/unsubscribe'
@@ -1388,6 +1411,7 @@ export interface FileRouteTypes {
     | '/(public)/ip-check'
     | '/(public)/me'
     | '/(public)/status'
+    | '/admin/agents'
     | '/admin/auth'
     | '/admin/automation'
     | '/admin/coupons'
@@ -1457,6 +1481,7 @@ export interface FileRouteTypes {
     | '/(public)/account/orders/$orderNumber'
     | '/admin/products/$productId/edit'
     | '/api/configuration-logo/$scope/$id'
+    | '/api/internal/agent-program/order-profit'
     | '/api/ops/restock/reconcile'
     | '/api/shop/automation/callback'
     | '/api/shop/renewal/unsubscribe'
@@ -1507,6 +1532,7 @@ export interface RootRouteChildren {
   GoItemItemIdRoute: typeof GoItemItemIdRoute
   RRenewTokenRoute: typeof RRenewTokenRoute
   ApiConfigurationLogoScopeIdRoute: typeof ApiConfigurationLogoScopeIdRoute
+  ApiInternalAgentProgramOrderProfitRoute: typeof ApiInternalAgentProgramOrderProfitRoute
   ApiShopAutomationCallbackRoute: typeof ApiShopAutomationCallbackRoute
   ApiShopRenewalUnsubscribeRoute: typeof ApiShopRenewalUnsubscribeRoute
   ApiSupportWebCloseRoute: typeof ApiSupportWebCloseRoute
@@ -1633,6 +1659,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/admin/auth'
       preLoaderRoute: typeof AdminAuthRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/agents': {
+      id: '/admin/agents'
+      path: '/agents'
+      fullPath: '/admin/agents'
+      preLoaderRoute: typeof AdminAgentsRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/(public)/status': {
@@ -2258,6 +2291,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOpsRestockReconcileRouteImport
       parentRoute: typeof ApiOpsRestockRoute
     }
+    '/api/internal/agent-program/order-profit': {
+      id: '/api/internal/agent-program/order-profit'
+      path: '/api/internal/agent-program/order-profit'
+      fullPath: '/api/internal/agent-program/order-profit'
+      preLoaderRoute: typeof ApiInternalAgentProgramOrderProfitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/configuration-logo/$scope/$id': {
       id: '/api/configuration-logo/$scope/$id'
       path: '/api/configuration-logo/$scope/$id'
@@ -2620,6 +2660,7 @@ interface AdminRouteRouteChildren {
   AdminProductsRouteRoute: typeof AdminProductsRouteRouteWithChildren
   AdminSettingsRouteRoute: typeof AdminSettingsRouteRouteWithChildren
   AdminSuppliersRouteRoute: typeof AdminSuppliersRouteRouteWithChildren
+  AdminAgentsRoute: typeof AdminAgentsRoute
   AdminAuthRoute: typeof AdminAuthRoute
   AdminAutomationRoute: typeof AdminAutomationRoute
   AdminCouponsRoute: typeof AdminCouponsRoute
@@ -2637,6 +2678,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminProductsRouteRoute: AdminProductsRouteRouteWithChildren,
   AdminSettingsRouteRoute: AdminSettingsRouteRouteWithChildren,
   AdminSuppliersRouteRoute: AdminSuppliersRouteRouteWithChildren,
+  AdminAgentsRoute: AdminAgentsRoute,
   AdminAuthRoute: AdminAuthRoute,
   AdminAutomationRoute: AdminAutomationRoute,
   AdminCouponsRoute: AdminCouponsRoute,
@@ -2706,6 +2748,8 @@ const rootRouteChildren: RootRouteChildren = {
   GoItemItemIdRoute: GoItemItemIdRoute,
   RRenewTokenRoute: RRenewTokenRoute,
   ApiConfigurationLogoScopeIdRoute: ApiConfigurationLogoScopeIdRoute,
+  ApiInternalAgentProgramOrderProfitRoute:
+    ApiInternalAgentProgramOrderProfitRoute,
   ApiShopAutomationCallbackRoute: ApiShopAutomationCallbackRoute,
   ApiShopRenewalUnsubscribeRoute: ApiShopRenewalUnsubscribeRoute,
   ApiSupportWebCloseRoute: ApiSupportWebCloseRoute,

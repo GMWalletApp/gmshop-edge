@@ -33,6 +33,7 @@ export type AgentRequest = {
 	kind: AgentAccessKind;
 	orderItemId?: string;
 	initialPassword?: string;
+	paidAmount?: string;
 };
 export type AgentTransport = (input: AgentRequest) => Promise<AgentResult>;
 export async function requireAgentAccessEnabled(db: D1Database) {

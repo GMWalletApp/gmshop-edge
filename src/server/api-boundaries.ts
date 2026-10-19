@@ -20,6 +20,7 @@ const publicGetPatterns = [
 	new RegExp(`^/api/shop/products/${uuidSegment}/media/${uuidSegment}$`, "i"),
 ];
 const publicPostPatterns = [
+	/^\/api\/internal\/agent-program\/order-profit$/,
 	/^\/api\/support\/web\/attachments\/?$/,
 	/^\/api\/shop\/invoice-order$/,
 	/^\/api\/shop\/renewal\/unsubscribe$/,

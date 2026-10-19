@@ -271,6 +271,41 @@ describe("paid agent access", { timeout: 30000 }, () => {
 				.first("balance_minor"),
 		).toBe(before);
 	});
+	it("sends the actual subsite purchase payment in exact major units", async () => {
+		const order = await createMultiStoreOrder(
+			db,
+			{
+				items: [
+					{ sellableItemId: agentAccessProducts.subsite.itemId, quantity: 1 },
+				],
+				email: "buyer@example.test",
+				idempotencyKey: crypto.randomUUID(),
+				agentAccessTermsAccepted: true,
+			},
+			{ userId },
+		);
+		await completeWalletStoreOrder(db, { orderId: order.id, userId });
+		// Purchase amounts must come from accounting, not the current catalog price.
+		await db
+			.prepare("UPDATE shop_orders SET paid_minor='9901' WHERE id=?")
+			.bind(order.id)
+			.run();
+		const delivery = await db
+			.prepare(
+				"SELECT d.id FROM delivery_records d JOIN shop_order_items oi ON oi.id=d.order_item_id WHERE oi.order_id=?",
+			)
+			.bind(order.id)
+			.first<{ id: string }>();
+		if (!delivery) throw new Error("delivery missing");
+		await processAgentDelivery(db, delivery.id);
+		expect(remote).toHaveBeenCalledWith(
+			expect.objectContaining({
+				operation: "provision",
+				kind: "subsite",
+				paidAmount: "99.01",
+			}),
+		);
+	});
 	it("unpaid order never triggers a remote grant", async () => {
 		const order = await make(db);
 		await db

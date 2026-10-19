@@ -38,6 +38,7 @@ export type NavigationModuleId =
 	| "supply-console"
 	| "suppliers"
 	| "orders"
+	| "agents"
 	| "customers"
 	| "coupons"
 	| "payment-configurations"
@@ -206,6 +207,20 @@ export const navigationGroups: readonly NavigationGroup[] = [
 						"/admin/orders",
 						ReceiptText,
 						systemPermission("orders", "read"),
+					),
+				],
+			},
+			{
+				id: "agents",
+				title: () => m.agent_program_title(),
+				icon: Users,
+				entries: [
+					entry(
+						"agents",
+						() => m.agent_program_title(),
+						"/admin/agents",
+						Users,
+						systemPermission("operations", "read"),
 					),
 				],
 			},
@@ -496,11 +511,17 @@ export function firstAllowedAdminUrl(
 
 export function systemSidebarData(
 	permissions: readonly SystemPermissionGrant[],
+	roles: readonly string[] = [],
 ): SidebarData {
 	const navGroups: SidebarData["navGroups"] = [];
 	for (const group of navigationGroups) {
 		const items: SidebarData["navGroups"][number]["items"] = [];
 		for (const module of group.modules) {
+			if (
+				module.id === "agents" &&
+				!roles.some((role) => role === "root" || role === "admin")
+			)
+				continue;
 			const visible = module.entries.filter((candidate) =>
 				canAccessEntry(candidate, permissions),
 			);

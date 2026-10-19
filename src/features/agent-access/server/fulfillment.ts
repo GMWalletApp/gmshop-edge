@@ -13,11 +13,12 @@ type AccessOrder = {
 	state: string;
 	order_id: string;
 	order_status: string;
+	paid_minor: string;
 	attempt_count: number;
 	next_attempt_at: number;
 	refund_pending: number;
 };
-const query = `SELECT a.*,oi.order_id,o.status AS order_status,
+const query = `SELECT a.*,oi.order_id,o.status AS order_status,o.paid_minor,
  EXISTS(SELECT 1 FROM refunds r WHERE r.order_id=o.id AND r.status IN ('pending','processing')) AS refund_pending
  FROM agent_access_orders a JOIN shop_order_items oi ON oi.id=a.order_item_id JOIN shop_orders o ON o.id=oi.order_id`;
 
@@ -99,6 +100,11 @@ export async function processAgentDelivery(
 			email: row.email,
 			kind: row.kind,
 			orderItemId: row.order_item_id,
+			...(row.kind === "subsite"
+				? {
+						paidAmount: `${BigInt(row.paid_minor) / 100n}.${(BigInt(row.paid_minor) % 100n).toString().padStart(2, "0")}`,
+					}
+				: {}),
 		});
 		if (result.state !== "active" || !result.userId)
 			throw new Error("not_ready");
