@@ -371,7 +371,7 @@ it.each([
 	expect(container.textContent).toContain("#9981");
 	// The agent's own main-site purchases are shown, not folded into sales.
 	expect(container.textContent).toContain(
-		locale === "zh-CN" ? "上月自己拿货" : "Own purchases last month",
+		locale === "zh-CN" ? "上月主站进货" : "Main-site purchases last month",
 	);
 	expect(container.textContent).toContain("2,315.00");
 	act(() => root.render(<AgentProgramPage />));
