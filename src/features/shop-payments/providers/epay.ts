@@ -72,6 +72,13 @@ export const epayPaymentProvider: PaymentProviderAdapter = {
 	},
 	async createPayment(input, rawCredential, fetcher = fetch) {
 		const credential = epayCredentialSchema.parse(rawCredential);
+		// The gateway reads `money` as yuan. Any other currency would charge the converted number in CNY.
+		if (input.currency !== "CNY" || input.currencyDecimals !== 2)
+			throw new DomainError(
+				"payment_currency_unsupported",
+				400,
+				"Epay requires CNY with two decimal places",
+			);
 		if (!input.payerIp)
 			throw new DomainError(
 				"payment_payer_ip_required",
@@ -249,7 +256,8 @@ export const epayPaymentProvider: PaymentProviderAdapter = {
 			type: "payment_succeeded",
 			amountMinor: null,
 			amountDecimal: event.money,
-			currency: null,
+			// Epay only settles in CNY, so a callback must match a CNY attempt.
+			currency: "CNY",
 			merchantOrderId: event.out_trade_no,
 			payloadDigest: await sha256Hex(new URLSearchParams(params).toString()),
 		};
