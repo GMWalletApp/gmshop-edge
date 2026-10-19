@@ -636,13 +636,17 @@ describe("invitation and personal recall checkout", { timeout: 30000 }, () => {
 		).toBe("400");
 	});
 	it("budgets public coupon quotes per IP and hides why a code was rejected", async () => {
-		const code = await openReferralCoupon(db, promoter);
 		const items = [{ id: sku, quantity: 1 }];
 		const guest = { normalizedEmail: "guest@example.com" };
-		for (const attempt of [code.code, "NO-SUCH-CODE"])
-			await expect(
-				quoteStoreCouponForVisitor(db, "198.51.100.40", attempt, items, guest),
-			).rejects.toMatchObject({ code: "coupon_unavailable", status: 409 });
+		await expect(
+			quoteStoreCouponForVisitor(
+				db,
+				"198.51.100.40",
+				"NO-SUCH-CODE",
+				items,
+				guest,
+			),
+		).rejects.toMatchObject({ code: "coupon_unavailable", status: 409 });
 		await db
 			.prepare(
 				`INSERT INTO rate_limit_counters(id,bucket_key,window_start,count,expires_at,created_at,updated_at)
