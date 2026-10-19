@@ -29,6 +29,7 @@ const publicPostPatterns = [
 	/^\/api\/ops\/redeem-cutover$/,
 	/^\/api\/ops\/redeem-restock$/,
 	/^\/api\/ops\/restock\/reconcile$/,
+	/^\/api\/ops\/restock\/swap$/,
 	/^\/api\/support\/web\/(?:conversations|messages|replies\/ack|close)$/,
 	/^\/api\/telegram\/webhook$/,
 	paymentWebhookPattern,
