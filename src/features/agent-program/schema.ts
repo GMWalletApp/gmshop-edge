@@ -43,7 +43,12 @@ const salesSchema = z.object({
 const periodProfitSchema = z.object({
 	profit: salesSchema.shape.profit.nullable(),
 	unknown_order_count: z.number().int().nonnegative(),
+	unknown_amount: money.default("0.00"),
 });
+// The agent's own main-site/API purchases; not subsite sales.
+const ownPurchasesSchema = z
+	.object({ orders: z.number().int().nonnegative(), amount: money })
+	.default({ orders: 0, amount: "0.00" });
 export const agentSchema = z.object({
 	id,
 	user_id: id,
@@ -99,6 +104,9 @@ export const agentSchema = z.object({
 	month: salesSchema,
 	last_month: salesSchema,
 	all_time: salesSchema,
+	own_month: ownPurchasesSchema,
+	own_last_month: ownPurchasesSchema,
+	own_all_time: ownPurchasesSchema,
 	withdrawable: money,
 	locked: money,
 	pending_withdrawal: money,

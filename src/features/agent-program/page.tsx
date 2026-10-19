@@ -96,6 +96,21 @@ export function AgentProgramPage() {
 				cell: ({ row }) => formatNumber(row.original.month.orders),
 			},
 			{
+				id: "own_month",
+				accessorFn: (agent) => amountMinor(agent.own_month.amount),
+				header: m.agent_program_own_purchases(),
+				cell: ({ row }) => (
+					<div>
+						{money(row.original.own_month.amount, currency)}
+						<p className="text-muted-foreground text-xs">
+							{m.agent_program_own_orders({
+								count: formatNumber(row.original.own_month.orders),
+							})}
+						</p>
+					</div>
+				),
+			},
+			{
 				id: "profit",
 				accessorFn: (agent) => amountMinor(agent.month.profit),
 				header: m.agent_program_profit(),
@@ -137,6 +152,13 @@ export function AgentProgramPage() {
 	const rows = agents.data?.agents ?? [];
 	const totals = {
 		sales: rows.reduce((n, a) => n + amountMinor(a.month.sales), 0n),
+		own: rows.reduce((n, a) => n + amountMinor(a.own_month.amount), 0n),
+		ourProfit: rows.some((a) => a.our_profit_month.profit === null)
+			? undefined
+			: rows.reduce(
+					(n, a) => n + amountMinor(a.our_profit_month.profit ?? "0"),
+					0n,
+				),
 		rebates: rows.reduce(
 			(n, a) => n + amountMinor(a.rebate.credited_total),
 			0n,
@@ -198,13 +220,20 @@ export function AgentProgramPage() {
 				<output>{m.agent_program_loading()}</output>
 			) : (
 				<>
-					<div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+					<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
 						{[
 							[
 								m.agent_program_active(),
 								formatNumber(rows.filter((a) => a.status === "active").length),
 							],
 							[m.agent_program_sales(), money(totals.sales, currency)],
+							[m.agent_program_own_purchases(), money(totals.own, currency)],
+							[
+								m.agent_program_our_profit_month(),
+								totals.ourProfit === undefined
+									? m.agent_program_profit_fetch_unavailable()
+									: money(totals.ourProfit, currency),
+							],
 							[m.agent_program_rebates(), money(totals.rebates, currency)],
 							[
 								m.agent_program_pending(),

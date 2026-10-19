@@ -68,10 +68,12 @@ function agent(id: number) {
 		our_profit_month: {
 			profit: state.unavailable ? null : "123.00",
 			unknown_order_count: state.unknownCount,
+			unknown_amount: state.unknownCount ? "1065.00" : "0.00",
 		},
 		our_profit_last_month: {
 			profit: state.unavailable ? null : "-25.00",
 			unknown_order_count: 0,
+			unknown_amount: "0.00",
 		},
 		opened_at: "2026-10-18",
 		opening_fee_paid: "99.00",
@@ -86,6 +88,9 @@ function agent(id: number) {
 		month: { orders: 0, sales: "0.00", profit: "0.00" },
 		last_month: { orders: 0, sales: "0.00", profit: "0.00" },
 		all_time: { orders: 0, sales: "0.00", profit: "0.00" },
+		own_month: { orders: 3, amount: "920.00" },
+		own_last_month: { orders: 11, amount: "2315.00" },
+		own_all_time: { orders: 14, amount: "3235.00" },
 		withdrawable: "0.00",
 		locked: "0.00",
 		pending_withdrawal: "0.00",
@@ -359,16 +364,21 @@ it.each([
 	)?.parentElement;
 	expect(stat?.textContent).toContain(
 		locale === "zh-CN"
-			? "其中 2 单成本未知，按亏损计"
-			: "Includes 2 orders with unknown costs",
+			? "另有 2 单成本未知（¥1,065.00），未计入"
+			: "2 more orders with unknown costs",
 	);
 	expect(stat?.textContent).toContain("123.00");
 	expect(container.textContent).toContain("#9981");
+	// The agent's own main-site purchases are shown, not folded into sales.
+	expect(container.textContent).toContain(
+		locale === "zh-CN" ? "上月自己拿货" : "Own purchases last month",
+	);
+	expect(container.textContent).toContain("2,315.00");
 	act(() => root.render(<AgentProgramPage />));
 	expect(container.textContent).toContain(
 		locale === "zh-CN"
-			? "其中 2 单成本未知，按亏损计"
-			: "Includes 2 orders with unknown costs",
+			? "另有 2 单成本未知（¥1,065.00），未计入"
+			: "2 more orders with unknown costs",
 	);
 	expect(container.textContent).toContain("123.00");
 	state.unknownCount = 0;

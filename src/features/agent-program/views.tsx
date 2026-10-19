@@ -190,6 +190,18 @@ export function AgentDetail({
 									money(agent.all_time.sales, currency),
 								],
 								[
+									m.agent_program_own_purchases(),
+									`${money(agent.own_month.amount, currency)} · ${m.agent_program_own_orders({ count: formatNumber(agent.own_month.orders) })}`,
+								],
+								[
+									m.agent_program_own_last_month(),
+									`${money(agent.own_last_month.amount, currency)} · ${m.agent_program_own_orders({ count: formatNumber(agent.own_last_month.orders) })}`,
+								],
+								[
+									m.agent_program_own_all_time(),
+									`${money(agent.own_all_time.amount, currency)} · ${m.agent_program_own_orders({ count: formatNumber(agent.own_all_time.orders) })}`,
+								],
+								[
 									m.agent_program_available(),
 									money(agent.withdrawable, currency),
 								],

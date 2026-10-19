@@ -62,6 +62,12 @@ const list = (month = beijingMonth()) => ({
 			label: "Instant agent",
 			status: "active",
 			month: { sales: "123.45", orders: 2, profit: "9.99" },
+			own_month: { orders: 1, amount: "50.00" },
+			our_profit_month: {
+				profit: "3.21",
+				unknown_order_count: 0,
+				unknown_amount: "0.00",
+			},
 			rebate: { credited_total: "1.00" },
 		},
 	],

@@ -112,6 +112,7 @@ export function PeriodProfit({
 				<p className="text-xs text-muted-foreground">
 					{m.agent_program_period_cost_unknown({
 						count: formatNumber(value.unknown_order_count),
+						amount: money(value.unknown_amount, currency),
 					})}
 				</p>
 			)}
