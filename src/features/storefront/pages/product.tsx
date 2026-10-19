@@ -79,9 +79,11 @@ const appleIdProductId = "c70d10e8-b781-4782-bc98-1f034bcd069a";
 export function StorefrontProductPage({
 	productId,
 	preferredItemId,
+	landingSource,
 }: {
 	productId: string;
 	preferredItemId?: string;
+	landingSource?: "order" | "redeem";
 }) {
 	const locale = getLocale();
 	const session = authClient.useSession();
@@ -122,6 +124,17 @@ export function StorefrontProductPage({
 				productId: product.data.id,
 			});
 	}, [product.data?.id]);
+	// Growth links (order-page cross-sell, redeem site) land here; the weekly
+	// report attributes orders placed later in the same browser session.
+	useEffect(() => {
+		if (product.data?.id && landingSource)
+			trackCommerceEvent({
+				eventType:
+					landingSource === "order" ? "cross_sell_landed" : "redeem_landed",
+				productId: product.data.id,
+				sellableItemId: preferredItemId,
+			});
+	}, [product.data?.id, landingSource, preferredItemId]);
 	useEffect(() => {
 		const first = preferredItemId
 			? product.data?.sellableItems.find((item) => item.id === preferredItemId)

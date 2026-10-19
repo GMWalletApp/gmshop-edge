@@ -7,6 +7,7 @@ import {
 } from "#/features/promotions/server/balance";
 import {
 	issueRecallCoupon,
+	issueRecallEmailCoupon,
 	openReferralCoupon,
 } from "#/features/promotions/server/coupons";
 import { expireStoreOrders } from "#/features/shop-orders/server/expiration";
@@ -192,6 +193,90 @@ describe("invitation and personal recall checkout", { timeout: 30000 }, () => {
 			referral_reward_minor: "0",
 			promotion_purpose: "recall",
 		});
+	});
+	it("binds a recall coupon to a past buyer email so a guest can redeem it once with that email only", async () => {
+		const old = await emptyOrder();
+		await db
+			.prepare("UPDATE shop_orders SET status='completed',paid_at=1 WHERE id=?")
+			.bind(old)
+			.run();
+		expect(
+			await issueRecallEmailCoupon(db, {
+				email: "stranger@example.com",
+				campaignKey: "email-recall",
+				startsAt: Date.now() - 1000,
+			}),
+		).toBeNull();
+		const coupon = await issueRecallEmailCoupon(db, {
+			email: " Buyer@Example.com ",
+			campaignKey: "email-recall",
+			startsAt: Date.now() - 1000,
+		});
+		expect(coupon?.code).toMatch(/^BACK-/);
+		expect(
+			(
+				await issueRecallEmailCoupon(db, {
+					email: "buyer@example.com",
+					campaignKey: "email-recall",
+					startsAt: Date.now(),
+				})
+			)?.code,
+		).toBe(coupon?.code);
+		const guest = (email: string) =>
+			createMultiStoreOrder(db, {
+				email,
+				couponCode: coupon?.code ?? "",
+				idempotencyKey: crypto.randomUUID(),
+				items: [{ sellableItemId: sku, quantity: 1 }],
+			});
+		await expect(guest("other@example.com")).rejects.toThrow(
+			/email address this coupon was sent to/,
+		);
+		await expect(
+			db
+				.prepare(
+					`INSERT INTO coupon_redemptions (id, coupon_id, order_id, user_id, normalized_email, discount_minor, status, created_at, updated_at)
+					 VALUES ('r1', ?, ?, NULL, 'other@example.com', '800', 'reserved', ?, ?)`,
+				)
+				.bind(coupon?.id, old, Date.now(), Date.now())
+				.run(),
+		).rejects.toThrow(/coupon_recipient_or_usage_invalid/);
+		const attempts = await Promise.allSettled([
+			guest("buyer@example.com"),
+			guest("BUYER@example.com"),
+		]);
+		expect(attempts.filter((a) => a.status === "fulfilled")).toHaveLength(1);
+		const saved = await db
+			.prepare(
+				"SELECT user_id,total_minor,promotion_purpose FROM shop_orders WHERE coupon_id=?",
+			)
+			.bind(coupon?.id)
+			.first();
+		expect(saved).toEqual({
+			user_id: null,
+			total_minor: "107200",
+			promotion_purpose: "recall",
+		});
+		await expect(guest("buyer@example.com")).rejects.toThrow(/unavailable/);
+	});
+	it("never adds an email-bound coupon to a recall campaign that already has an account coupon", async () => {
+		const old = await emptyOrder();
+		await db
+			.prepare("UPDATE shop_orders SET status='completed',paid_at=1 WHERE id=?")
+			.bind(old)
+			.run();
+		await issueRecallCoupon(db, {
+			userId: buyer,
+			campaignKey: "upgraded",
+			startsAt: Date.now() - 1000,
+		});
+		expect(
+			await issueRecallEmailCoupon(db, {
+				email: "buyer@example.com",
+				campaignKey: "upgraded",
+				startsAt: Date.now(),
+			}),
+		).toBeNull();
 	});
 	it("releases an unpaid recall coupon but does not recycle a paid refunded coupon", async () => {
 		const old = await emptyOrder();

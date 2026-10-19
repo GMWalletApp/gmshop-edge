@@ -7,12 +7,11 @@ import {
 	recipientHash,
 	recipientSuppressionReason,
 } from "#/features/notifications/server/recipient-policy";
-import { issueRecallCoupon } from "#/features/promotions/server/coupons";
+import { issueRecallEmailCoupon } from "#/features/promotions/server/coupons";
 import {
 	loadDeliveryWarehouseToken,
 	requestWarehouse,
 } from "#/features/redeem-warehouse/server/warehouse-client";
-import { DomainError } from "#/lib/domain-error";
 import type { SupportedLocale } from "#/lib/locales";
 import { loadRuntimeConfig, type RuntimeConfig } from "#/server/runtime-config";
 import {
@@ -820,38 +819,40 @@ export function recallCouponCampaignKey(reminderId: string) {
 }
 
 /**
- * The recall email's personal coupon, issued through the regular recall rules
- * (verified email, marketing consent, a paid order). Ineligible customers, or a
- * coupon that is no longer usable, get the email without a coupon.
+ * The recall email's personal coupon, bound to the recipient email so guest buyers
+ * can use it too. Recipients reaching this point have not unsubscribed. Items with
+ * no promotion budget, ineligible emails, or a coupon that is no longer usable get
+ * the email without a coupon.
  */
 async function issueReminderRecallCoupon(
 	db: D1Database,
-	row: Pick<DueRow, "reminder_id" | "user_id">,
+	row: Pick<DueRow, "reminder_id" | "recipient_email" | "sellable_item_id">,
 	now: number,
 ) {
-	if (!row.user_id) return null;
-	try {
-		const coupon = await issueRecallCoupon(db, {
-			userId: row.user_id,
-			campaignKey: recallCouponCampaignKey(row.reminder_id),
-			startsAt: now,
-		});
-		if (
-			!coupon ||
-			coupon.enabled !== 1 ||
-			coupon.used_count > 0 ||
-			coupon.ends_at <= now
+	// Same effective budget as checkout: the ¥8 tier only applies from ¥1000.
+	const item = await db
+		.prepare(
+			`SELECT CASE WHEN promotion_budget_minor = '800' AND CAST(price_minor AS INTEGER) < 100000
+			 THEN '0' ELSE promotion_budget_minor END AS promotion_budget_minor
+			 FROM product_sellable_items WHERE id = ? LIMIT 1`,
 		)
-			return null;
-		return { code: coupon.code, endsAt: coupon.ends_at };
-	} catch (error) {
-		if (
-			error instanceof DomainError &&
-			error.code === "recall_customer_ineligible"
-		)
-			return null;
-		throw error;
-	}
+		.bind(row.sellable_item_id)
+		.first<{ promotion_budget_minor: string }>();
+	const amountMinor = item?.promotion_budget_minor ?? "0";
+	if (amountMinor === "0") return null;
+	const coupon = await issueRecallEmailCoupon(db, {
+		email: row.recipient_email,
+		campaignKey: recallCouponCampaignKey(row.reminder_id),
+		startsAt: now,
+	});
+	if (
+		!coupon ||
+		coupon.enabled !== 1 ||
+		coupon.used_count > 0 ||
+		coupon.ends_at <= now
+	)
+		return null;
+	return { code: coupon.code, endsAt: coupon.ends_at, amountMinor };
 }
 
 async function recipientExclusion(

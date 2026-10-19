@@ -35,11 +35,10 @@ describe("cross-sell setting parsing", () => {
 		expect(parseCrossSellSetting(value).size).toBe(0);
 	});
 
-	it("links to the preselected item with xsell attribution that referral capture ignores", () => {
+	it("links to the preselected item with order-page attribution", () => {
 		expect(crossSellProductPath("p 1", "i1")).toBe(
-			"/products/p%201?item=i1&ref=xsell#purchase-options",
+			"/products/p%201?item=i1&src=order#purchase-options",
 		);
-		expect(/^INV-[A-Z0-9]{20}$/.test("XSELL")).toBe(false);
 	});
 });
 
@@ -131,7 +130,7 @@ describe("order growth blocks", { timeout: 60_000 }, () => {
 				currency: "CNY",
 				currencyDecimals: 2,
 				coverUrl: null,
-				href: "/products/product-other?item=item-b&ref=xsell#purchase-options",
+				href: "/products/product-other?item=item-b&src=order#purchase-options",
 			},
 			{
 				sellableItemId: "item-a",
@@ -142,7 +141,7 @@ describe("order growth blocks", { timeout: 60_000 }, () => {
 				currency: "CNY",
 				currencyDecimals: 2,
 				coverUrl: null,
-				href: "/products/product-other?item=item-a&ref=xsell#purchase-options",
+				href: "/products/product-other?item=item-a&src=order#purchase-options",
 			},
 		]);
 	});

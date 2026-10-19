@@ -111,7 +111,14 @@ export type WeeklyReport = {
 		rewardsCreatedMinor: number;
 		rewardsCredited: number;
 		rewardsCreditedMinor: number;
+		recallIssued: number;
 	};
+	growthLinks: {
+		source: "cross_sell_landed" | "redeem_landed";
+		sessions: number;
+		orders: number;
+		revenueMinor: number;
+	}[];
 	suppliers: SupplierBalance[];
 };
 
@@ -158,10 +165,11 @@ export async function buildWeeklyReport(input: {
 		orders.results.filter((row) => row.paid_at < from),
 	);
 
-	const [repeat, topSkus, coupons, rewards, balances] = await Promise.all([
-		db
-			.prepare(
-				`SELECT COUNT(*) AS customers, COALESCE(SUM(order_count >= 2), 0) AS repeat_customers FROM (
+	const [repeat, topSkus, coupons, rewards, balances, landings, growthOrders] =
+		await Promise.all([
+			db
+				.prepare(
+					`SELECT COUNT(*) AS customers, COALESCE(SUM(order_count >= 2), 0) AS repeat_customers FROM (
 				  SELECT lower(COALESCE(orders.normalized_contact_email, orders.contact_email)) AS email,
 				   COUNT(*) AS order_count
 				  FROM shop_orders orders
@@ -169,12 +177,12 @@ export async function buildWeeklyReport(input: {
 				   AND COALESCE(orders.normalized_contact_email, orders.contact_email) IS NOT NULL
 				   AND NOT EXISTS (SELECT 1 FROM supplier_api_orders api WHERE api.shop_order_id = orders.id)
 				  GROUP BY 1)`,
-			)
-			.bind(to - 30 * dayMs, to)
-			.first<{ customers: number; repeat_customers: number }>(),
-		db
-			.prepare(
-				`SELECT item.product_name || ' · ' || item.sellable_item_name AS label,
+				)
+				.bind(to - 30 * dayMs, to)
+				.first<{ customers: number; repeat_customers: number }>(),
+			db
+				.prepare(
+					`SELECT item.product_name || ' · ' || item.sellable_item_name AS label,
 				  SUM(item.quantity) AS quantity,
 				  SUM(CAST(item.subtotal_minor AS INTEGER) - CAST(item.discount_minor AS INTEGER)
 				      - COALESCE(${itemCostSql("item")}, 0)) AS profit_minor
@@ -182,27 +190,27 @@ export async function buildWeeklyReport(input: {
 				 WHERE orders.status IN ${paidStatuses} AND orders.currency = 'CNY'
 				  AND orders.paid_at >= ? AND orders.paid_at < ?
 				 GROUP BY item.sellable_item_id ORDER BY profit_minor DESC LIMIT 5`,
-			)
-			.bind(from, to)
-			.all<{ label: string; quantity: number; profit_minor: number }>(),
-		db
-			.prepare(
-				`SELECT coupon.purpose, COUNT(*) AS uses,
+				)
+				.bind(from, to)
+				.all<{ label: string; quantity: number; profit_minor: number }>(),
+			db
+				.prepare(
+					`SELECT coupon.purpose, COUNT(*) AS uses,
 				  COALESCE(SUM(CAST(redemption.discount_minor AS INTEGER)), 0) AS discount_minor
 				 FROM coupon_redemptions redemption JOIN coupons coupon ON coupon.id = redemption.coupon_id
 				 WHERE redemption.status = 'consumed' AND coupon.purpose IN ('referral', 'recall')
 				  AND redemption.consumed_at >= ? AND redemption.consumed_at < ?
 				 GROUP BY coupon.purpose`,
-			)
-			.bind(from, to)
-			.all<{
-				purpose: "referral" | "recall";
-				uses: number;
-				discount_minor: number;
-			}>(),
-		db
-			.prepare(
-				`SELECT
+				)
+				.bind(from, to)
+				.all<{
+					purpose: "referral" | "recall";
+					uses: number;
+					discount_minor: number;
+				}>(),
+			db
+				.prepare(
+					`SELECT
 				  (SELECT COUNT(*) FROM promotion_rewards WHERE created_at >= ?1 AND created_at < ?2) AS created,
 				  (SELECT COALESCE(SUM(CAST(amount_minor AS INTEGER)), 0) FROM promotion_rewards
 				   WHERE created_at >= ?1 AND created_at < ?2) AS created_minor,
@@ -210,18 +218,57 @@ export async function buildWeeklyReport(input: {
 				   AND updated_at >= ?1 AND updated_at < ?2) AS credited,
 				  (SELECT COALESCE(SUM(CAST(amount_minor AS INTEGER)), 0) FROM promotion_rewards
 				   WHERE state = 'available' AND updated_at >= ?1 AND updated_at < ?2) AS credited_minor`,
-			)
-			.bind(from, to)
-			.first<{
-				created: number;
-				created_minor: number;
-				credited: number;
-				credited_minor: number;
-			}>(),
-		collectSupplierBalances({ db, now: input.now, readStats: input.readStats }),
-	]);
+				)
+				.bind(from, to)
+				.first<{
+					created: number;
+					created_minor: number;
+					credited: number;
+					credited_minor: number;
+				}>(),
+			collectSupplierBalances({
+				db,
+				now: input.now,
+				readStats: input.readStats,
+			}),
+			db
+				.prepare(
+					`SELECT event_type AS source, COUNT(DISTINCT session_id) AS sessions
+				 FROM commerce_events INDEXED BY commerce_events_type_created_idx
+				 WHERE event_type IN ('cross_sell_landed', 'redeem_landed')
+				  AND created_at >= ? AND created_at < ?
+				 GROUP BY event_type`,
+				)
+				.bind(from, to)
+				.all<{ source: string; sessions: number }>(),
+			// Paid orders placed later in a browser session that landed from a growth link.
+			db
+				.prepare(
+					`SELECT landing.source, COUNT(*) AS orders,
+				  COALESCE(SUM(CAST(orders.paid_minor AS INTEGER)), 0) AS revenue_minor
+				 FROM (SELECT DISTINCT landed.event_type AS source, created.order_id
+				  FROM commerce_events created
+				  JOIN commerce_events landed ON landed.session_id = created.session_id
+				   AND landed.event_type IN ('cross_sell_landed', 'redeem_landed')
+				   AND landed.created_at <= created.created_at
+				  WHERE created.event_type = 'order_created' AND created.order_id IS NOT NULL
+				   AND created.created_at >= ? AND created.created_at < ?) landing
+				 JOIN shop_orders orders ON orders.id = landing.order_id
+				 WHERE orders.status IN ${paidStatuses} AND orders.currency = 'CNY'
+				  AND orders.paid_at >= ? AND orders.paid_at < ?
+				 GROUP BY landing.source`,
+				)
+				.bind(from - 7 * dayMs, to, from, to)
+				.all<{ source: string; orders: number; revenue_minor: number }>(),
+		]);
 	const purpose = (name: "referral" | "recall") =>
 		coupons.results.find((row) => row.purpose === name);
+	const recallIssued = await db
+		.prepare(
+			"SELECT COUNT(*) AS issued FROM coupons WHERE purpose = 'recall' AND created_at >= ? AND created_at < ?",
+		)
+		.bind(from, to)
+		.first<{ issued: number }>();
 	return {
 		from,
 		to,
@@ -245,7 +292,22 @@ export async function buildWeeklyReport(input: {
 			rewardsCreatedMinor: Number(rewards?.created_minor ?? 0),
 			rewardsCredited: Number(rewards?.credited ?? 0),
 			rewardsCreditedMinor: Number(rewards?.credited_minor ?? 0),
+			recallIssued: Number(recallIssued?.issued ?? 0),
 		},
+		growthLinks: (["cross_sell_landed", "redeem_landed"] as const).map(
+			(source) => {
+				const landed = landings.results.find((row) => row.source === source);
+				const ordered = growthOrders.results.find(
+					(row) => row.source === source,
+				);
+				return {
+					source,
+					sessions: Number(landed?.sessions ?? 0),
+					orders: Number(ordered?.orders ?? 0),
+					revenueMinor: Number(ordered?.revenue_minor ?? 0),
+				};
+			},
+		),
 		suppliers: balances.suppliers,
 	};
 }
@@ -289,7 +351,11 @@ export function formatWeeklyReport(report: WeeklyReport) {
 		);
 	lines.push(
 		"",
-		`促销：邀请券用了 ${promo.referralUses} 次（让利 ${formatYuan(promo.referralDiscountMinor)}），召回券用了 ${promo.recallUses} 次（让利 ${formatYuan(promo.recallDiscountMinor)}）`,
+		`促销：邀请券用了 ${promo.referralUses} 次（让利 ${formatYuan(promo.referralDiscountMinor)}），召回券发出 ${promo.recallIssued} 张、用了 ${promo.recallUses} 次（让利 ${formatYuan(promo.recallDiscountMinor)}）`,
+		...report.growthLinks.map(
+			(link) =>
+				`${link.source === "cross_sell_landed" ? "订单页「还买了」" : "兑换站推荐"}：${link.sessions} 人点进来，带来 ${link.orders} 单 ${formatYuan(link.revenueMinor)}`,
+		),
 		`邀请返佣：新增 ${promo.rewardsCreated} 笔 ${formatYuan(promo.rewardsCreatedMinor)}，已到账 ${promo.rewardsCredited} 笔 ${formatYuan(promo.rewardsCreditedMinor)}`,
 	);
 	if (report.suppliers.length)

@@ -122,7 +122,7 @@ export type RenewalEmailInput = {
 	/** Account page holding the customer's invite link (reminder stages only). */
 	inviteUrl?: string;
 	/** Personal recall coupon issued for this reminder (recall stage only). */
-	recallCoupon?: { code: string; endsAt: number } | null;
+	recallCoupon?: { code: string; endsAt: number; amountMinor?: string } | null;
 };
 
 function beijingDate(at: number) {
@@ -152,13 +152,17 @@ const englishMonths = [
 /**
  * Plain-text renewal email. Reminder stages carry one line about the invite
  * link and never a coupon; the recall stage may carry the customer's personal
- * recall coupon (issued only with verified email + marketing consent).
+ * recall coupon, bound to the email address the reminder was sent to.
  */
 export function renderRenewalEmail(input: RenewalEmailInput) {
 	const expiry = beijingDate(input.expiresAt);
 	const reminder = input.stage !== "recall";
 	const coupon = input.stage === "recall" ? input.recallCoupon : null;
 	const couponEnd = coupon ? beijingDate(coupon.endsAt) : null;
+	const couponAmount =
+		coupon?.amountMinor && /^\d+$/.test(coupon.amountMinor)
+			? (Number(coupon.amountMinor) / 100).toString()
+			: null;
 	const dueToday =
 		beijingDayStart(input.expiresAt) === beijingDayStart(input.now);
 	if (input.locale === "en-US") {
@@ -190,8 +194,8 @@ export function renderRenewalEmail(input: RenewalEmailInput) {
 			...(coupon && couponEnd
 				? [
 						"",
-						`Your personal welcome-back code: ${coupon.code}`,
-						`Valid for 7 days (until ${englishMonths[couponEnd.month - 1]} ${couponEnd.day}, Beijing time). Enter it at checkout while signed in to your account to get the discount.`,
+						`Your personal welcome-back code: ${coupon.code}${couponAmount ? ` (¥${couponAmount} off "${input.itemName}")` : ""}`,
+						`Valid once for 7 days (until ${englishMonths[couponEnd.month - 1]} ${couponEnd.day}, Beijing time). At checkout, use the email address this message was sent to and enter the code. No account needed.`,
 					]
 				: []),
 			...(reminder && input.inviteUrl
@@ -237,8 +241,8 @@ export function renderRenewalEmail(input: RenewalEmailInput) {
 		...(coupon && couponEnd
 			? [
 					"",
-					`你的专属回购码：${coupon.code}`,
-					`有效期 7 天（至北京时间 ${couponEnd.month}月${couponEnd.day}日），登录购买账号后在结账时输入即可抵扣。`,
+					`你的专属回购码：${coupon.code}${couponAmount ? `（续费「${input.itemName}」立减 ¥${couponAmount}）` : ""}`,
+					`有效期 7 天（至北京时间 ${couponEnd.month}月${couponEnd.day}日），限用一次。结账时填写收到这封邮件的邮箱，再输入回购码即可抵扣，不用注册。`,
 				]
 			: []),
 		...(reminder && input.inviteUrl

@@ -17,7 +17,9 @@ export function trackCommerceEvent(input: {
 		| "catalog_viewed"
 		| "product_viewed"
 		| "cart_item_added"
-		| "checkout_started";
+		| "checkout_started"
+		| "cross_sell_landed"
+		| "redeem_landed";
 	productId?: string;
 	sellableItemId?: string;
 }) {

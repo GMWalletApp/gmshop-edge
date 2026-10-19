@@ -405,8 +405,21 @@ describe("ops automation jobs", { timeout: 30_000 }, () => {
 			rewardsCreatedMinor: 800,
 			rewardsCredited: 1,
 			rewardsCreditedMinor: 800,
+			recallIssued: 1,
 		});
+		expect(report.growthLinks).toEqual([
+			{
+				source: "cross_sell_landed",
+				sessions: 1,
+				orders: 1,
+				revenueMinor: 10000,
+			},
+			{ source: "redeem_landed", sessions: 2, orders: 0, revenueMinor: 0 },
+		]);
 		const text = formatWeeklyReport(report);
+		expect(text).toContain("召回券发出 1 张、用了 0 次");
+		expect(text).toContain("订单页「还买了」：1 人点进来，带来 1 单 ¥100.00");
+		expect(text).toContain("兑换站推荐：2 人点进来，带来 0 单 ¥0.00");
 		expect(text).toContain("📊 经营周报｜2026-10-12 ~ 2026-10-18");
 		expect(text).toContain(
 			"付款订单：3 单（+200.0%）；主站直销 2 单，代理 API 1 单",
@@ -748,5 +761,27 @@ async function seedWeekly(db: D1Database) {
 				 VALUES ('o1', 'ref', '800', '800', 'available', ?, ?, ?)`,
 			)
 			.bind(current + hour, current, current + hour),
+		// s1 lands from the order page twice, then places o1; s2 lands from the
+		// redeem site without buying; s3 lands only after placing o2 (not attributed).
+		...[
+			["e1", "cross_sell_landed", "s1", null, current - 2 * hour],
+			["e2", "cross_sell_landed", "s1", null, current - hour],
+			["e3", "order_created", "s1", "o1", current],
+			["e4", "redeem_landed", "s2", null, current],
+			["e5", "order_created", "s3", "o2", current + hour],
+			["e6", "redeem_landed", "s3", null, current + 2 * hour],
+		].map(([id, type, session, order, at]) =>
+			db
+				.prepare(
+					"INSERT INTO commerce_events (id, event_type, session_id, order_id, created_at) VALUES (?, ?, ?, ?, ?)",
+				)
+				.bind(id, type, session, order, at),
+		),
+		db
+			.prepare(
+				`INSERT INTO coupons (id, code, name, type, currency, currency_decimals, value_minor, purpose, recipient_email, campaign_key, usage_limit, starts_at, ends_at, created_at, updated_at)
+				 VALUES ('recall-coupon', 'BACK-1', 'Personal recall', 'fixed', 'CNY', 2, '800', 'recall', 'b@example.com', 'renewal_recall:r1', 1, ?, ?, ?, ?)`,
+			)
+			.bind(current, current + day, current, current),
 	]);
 }

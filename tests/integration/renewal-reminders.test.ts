@@ -394,9 +394,13 @@ describe("renewal reminders", { timeout: 120_000 }, () => {
 		expect((await stageStatuses(db)).recall).toBe("sent");
 	});
 
-	it("issues one personal recall coupon per reminder and puts it in the recall email", async () => {
-		await seedCustomer(db, "u1", "buyer@customer.com", { consent: true });
-		await seedCustomer(db, "u2", "nope@customer.com", { consent: false });
+	it("issues one email-bound recall coupon per reminder, guests included, and puts it in the recall email", async () => {
+		await db
+			.prepare(
+				"UPDATE product_sellable_items SET promotion_budget_minor = '400' WHERE id = 'item-plus'",
+			)
+			.run();
+		await seedCustomer(db, "u1", "buyer@customer.com", { consent: false });
 		await seedOrder(db, {
 			id: "o1",
 			email: "buyer@customer.com",
@@ -405,9 +409,8 @@ describe("renewal reminders", { timeout: 120_000 }, () => {
 		});
 		await seedOrder(db, {
 			id: "o2",
-			email: "nope@customer.com",
+			email: "Guest@Customer.com",
 			content: code.replace("ABCD", "WXYZ"),
-			userId: "u2",
 		});
 		await runRenewalReminders(db, {
 			now: deliveredAt + 60_000,
@@ -420,41 +423,37 @@ describe("renewal reminders", { timeout: 120_000 }, () => {
 		expect(run).toMatchObject({ sent: 2 });
 		const coupons = await db
 			.prepare(
-				"SELECT code, recipient_user_id, campaign_key, starts_at, ends_at, usage_limit FROM coupons WHERE purpose = 'recall'",
+				`SELECT c.code, c.recipient_user_id, c.recipient_email, c.campaign_key, c.starts_at,
+				 c.ends_at, c.usage_limit, r.order_id FROM coupons c
+				 JOIN renewal_reminders r ON c.campaign_key = 'renewal_recall:' || r.id
+				 WHERE c.purpose = 'recall' ORDER BY r.order_id`,
 			)
-			.all<{
-				code: string;
-				recipient_user_id: string;
-				campaign_key: string;
-				starts_at: number;
-				ends_at: number;
-				usage_limit: number;
-			}>();
-		const reminderId = String(
-			await db
-				.prepare("SELECT id FROM renewal_reminders WHERE order_id = 'o1'")
-				.first("id"),
-		);
-		expect(coupons.results).toEqual([
-			{
+			.all();
+		expect(coupons.results).toEqual(
+			[
+				["o1", "buyer@customer.com"],
+				["o2", "guest@customer.com"],
+			].map(([orderId, email]) => ({
 				code: expect.stringMatching(/^BACK-[0-9A-F]{32}$/),
-				recipient_user_id: "u1",
-				campaign_key: `renewal_recall:${reminderId}`,
+				recipient_user_id: null,
+				recipient_email: email,
+				campaign_key: expect.stringMatching(/^renewal_recall:/),
 				starts_at: sendAt,
 				ends_at: sendAt + 7 * 86_400_000,
 				usage_limit: 1,
-			},
-		]);
-		const couponCode = coupons.results[0]?.code ?? "";
-		const texts = await recallTexts(db);
-		expect(texts.o1).toContain(`你的专属回购码：${couponCode}`);
-		expect(texts.o1).toContain(
-			"有效期 7 天（至北京时间 10月23日），登录购买账号后在结账时输入即可抵扣。",
+				order_id: orderId,
+			})),
 		);
-		expect(texts.o1).not.toContain("邀请好友");
-		// No marketing consent: the recall email goes out without a coupon.
-		expect(texts.o2).toBeDefined();
-		expect(texts.o2).not.toMatch(/BACK-|回购码/);
+		const couponCode = String(coupons.results[1]?.code);
+		const texts = await recallTexts(db);
+		expect(texts.o2).toContain(
+			`你的专属回购码：${couponCode}（续费「ChatGPT Plus 菲区 1个月」立减 ¥4）`,
+		);
+		expect(texts.o2).toContain(
+			"有效期 7 天（至北京时间 10月23日），限用一次。结账时填写收到这封邮件的邮箱，再输入回购码即可抵扣，不用注册。",
+		);
+		expect(texts.o2).not.toContain("邀请好友");
+		expect(texts.o1).toMatch(/回购码：BACK-/);
 
 		// A retry of the same reminder (e.g. after a failed enqueue) reuses the coupon.
 		await db
@@ -467,10 +466,56 @@ describe("renewal reminders", { timeout: 120_000 }, () => {
 			force: true,
 		});
 		expect(retry).toMatchObject({ sent: 2 });
-		expect(await count(db, "coupons")).toBe(1);
-		expect((await recallTexts(db)).o1).toContain(
+		expect(await count(db, "coupons")).toBe(2);
+		expect((await recallTexts(db)).o2).toContain(
 			`你的专属回购码：${couponCode}`,
 		);
+	});
+
+	it("sends the recall email without a coupon when the ¥8 tier does not apply below ¥1000", async () => {
+		await db
+			.prepare(
+				"UPDATE product_sellable_items SET promotion_budget_minor = '800', price_minor = '99900' WHERE id = 'item-plus'",
+			)
+			.run();
+		await seedOrder(db, {
+			id: "o1",
+			email: "guest@customer.com",
+			content: code,
+		});
+		await runRenewalReminders(db, {
+			now: deliveredAt + 60_000,
+			force: true,
+			lookup: completedLookup(null),
+		});
+		await setSetting(db, "notifications.renewal_recall_enabled", true);
+		await runRenewalReminders(db, {
+			now: recallDue + 5 * 86_400_000,
+			force: true,
+		});
+		expect(await count(db, "coupons")).toBe(0);
+		expect((await recallTexts(db)).o1).not.toMatch(/BACK-|回购码/);
+	});
+
+	it("sends the recall email without a coupon when the item has no promotion budget", async () => {
+		await seedOrder(db, {
+			id: "o1",
+			email: "guest@customer.com",
+			content: code,
+		});
+		await runRenewalReminders(db, {
+			now: deliveredAt + 60_000,
+			force: true,
+			lookup: completedLookup(null),
+		});
+		await setSetting(db, "notifications.renewal_recall_enabled", true);
+		const run = await runRenewalReminders(db, {
+			now: recallDue + 5 * 86_400_000,
+			force: true,
+		});
+		expect(run).toMatchObject({ sent: 1 });
+		expect(await count(db, "coupons")).toBe(0);
+		expect((await recallTexts(db)).o1).not.toMatch(/BACK-|回购码/);
 	});
 
 	it("renders the English recall coupon and invite lines", () => {
@@ -484,11 +529,19 @@ describe("renewal reminders", { timeout: 120_000 }, () => {
 			renewUrl: "https://laoshirenvip.com/r/renew/token",
 			unsubscribeUrl: "https://laoshirenvip.com/unsubscribe/renewal",
 			inviteUrl: "https://laoshirenvip.com/account",
-			recallCoupon: { code: "BACK-TEST", endsAt: recallDue + 7 * 86_400_000 },
+			recallCoupon: {
+				code: "BACK-TEST",
+				endsAt: recallDue + 7 * 86_400_000,
+				amountMinor: "800",
+			},
 		};
 		const recall = renderRenewalEmail({ ...base, stage: "recall" }).text;
-		expect(recall).toContain("Your personal welcome-back code: BACK-TEST");
-		expect(recall).toContain("Valid for 7 days (until Oct 18, Beijing time)");
+		expect(recall).toContain(
+			'Your personal welcome-back code: BACK-TEST (¥8 off "ChatGPT Plus")',
+		);
+		expect(recall).toContain(
+			"Valid once for 7 days (until Oct 18, Beijing time). At checkout, use the email address this message was sent to and enter the code. No account needed.",
+		);
 		expect(recall).not.toContain("Invite friends");
 		const reminder = renderRenewalEmail({ ...base, stage: "remind_3d" }).text;
 		expect(reminder).not.toContain("BACK-TEST");

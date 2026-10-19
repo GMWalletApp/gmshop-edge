@@ -216,6 +216,7 @@ export async function previewRenewalEmails(db: D1Database, now = Date.now()) {
 				stage === "recall"
 					? {
 							code: "BACK-EXAMPLE",
+							amountMinor: "400",
 							endsAt: (sample?.due_at ?? now) + 7 * dayMs,
 						}
 					: null,

@@ -39,7 +39,7 @@ export function crossSellProductPath(
 	productId: string,
 	sellableItemId: string,
 ) {
-	const search = new URLSearchParams({ item: sellableItemId, ref: "xsell" });
+	const search = new URLSearchParams({ item: sellableItemId, src: "order" });
 	return `/products/${encodeURIComponent(productId)}?${search}#purchase-options`;
 }
 

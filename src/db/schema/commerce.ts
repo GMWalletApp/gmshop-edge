@@ -590,6 +590,8 @@ export const commerceEvents = sqliteTable(
 				"payment_started",
 				"payment_succeeded",
 				"fulfillment_completed",
+				"cross_sell_landed",
+				"redeem_landed",
 			],
 		}).notNull(),
 		sessionId: text("session_id").notNull(),
@@ -619,6 +621,11 @@ export const commerceEvents = sqliteTable(
 			table.productId,
 			table.createdAt,
 			table.id,
+		),
+		index("commerce_events_session_type_created_idx").on(
+			table.sessionId,
+			table.eventType,
+			table.createdAt,
 		),
 		check(
 			"commerce_events_amount_check",
@@ -1988,6 +1995,7 @@ export const coupons = sqliteTable(
 			.default("standard"),
 		referrerUserId: text("referrer_user_id").references(() => users.id),
 		recipientUserId: text("recipient_user_id").references(() => users.id),
+		recipientEmail: text("recipient_email"),
 		campaignKey: text("campaign_key"),
 		type: text("type", { enum: ["fixed", "percentage"] }).notNull(),
 		currency: text("currency"),

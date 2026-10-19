@@ -79,6 +79,8 @@ export const commerceEventSchema = z.object({
 		"product_viewed",
 		"cart_item_added",
 		"checkout_started",
+		"cross_sell_landed",
+		"redeem_landed",
 	]),
 	sessionId: z.uuid(),
 	productId: z.uuid().nullable().default(null),
