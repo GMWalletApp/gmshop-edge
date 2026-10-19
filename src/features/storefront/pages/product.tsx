@@ -19,8 +19,10 @@ import {
 	PackageCheck,
 	PackageOpen,
 	Plus,
+	RefreshCw,
 	ShieldCheck,
 	ShoppingCart,
+	TriangleAlert,
 	Zap,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
@@ -733,34 +735,78 @@ function SkuPolicyPanel({ sellableItem }: { sellableItem: SellableItem }) {
 		sellableItem.fulfillmentSource === "supplier"
 			? m.store_supplier_delivery_time()
 			: sellableItem.policy.deliveryTime;
-	const fields = [
-		[m.store_sku_policy_delivery(), delivery],
-		[m.store_sku_policy_delivery_time(), deliveryTime],
-		[m.store_sku_policy_coverage(), sellableItem.policy.coverage],
-		[m.store_sku_policy_warranty(), sellableItem.policy.warranty],
-		[m.store_sku_policy_restrictions(), sellableItem.policy.restrictions],
-	].filter((field): field is [string, string] => Boolean(field[1]));
-	if (!fields.length) return null;
+	// Delivery method and time read as one fact, so they share a row.
+	const rows: [typeof PackageCheck, string, string[]][] = [
+		[
+			PackageCheck,
+			m.store_sku_policy_delivery(),
+			[delivery, deliveryTime].filter((line): line is string => Boolean(line)),
+		],
+		[
+			RefreshCw,
+			m.store_sku_policy_coverage(),
+			policyLines(sellableItem.policy.coverage),
+		],
+		[
+			ShieldCheck,
+			m.store_sku_policy_warranty(),
+			policyLines(sellableItem.policy.warranty),
+		],
+		[
+			TriangleAlert,
+			m.store_sku_policy_restrictions(),
+			policyLines(sellableItem.policy.restrictions),
+		],
+	];
+	const visible = rows.filter(([, , lines]) => lines.length);
+	if (!visible.length) return null;
 	return (
-		<section className="mt-6 grid gap-3 sm:grid-cols-2">
-			{fields.map(([label, value], index) => (
-				<div
-					className={cn(
-						"rounded-xl border border-border/70 bg-muted/25 p-4",
-						index === fields.length - 1 && fields.length % 2 === 1
-							? "sm:col-span-2"
-							: "",
-					)}
-					key={label}
-				>
-					<p className="font-medium text-foreground text-sm">{label}</p>
-					<p className="mt-1.5 whitespace-pre-wrap text-muted-foreground text-sm leading-6">
-						{value}
-					</p>
-				</div>
-			))}
+		<section className="mt-6 overflow-hidden rounded-2xl border border-border/70 bg-muted/20">
+			<h2 className="border-border/70 border-b px-4 py-3 font-medium text-sm sm:px-5">
+				{m.store_sku_policy_title()}
+			</h2>
+			<dl className="divide-y divide-border/60">
+				{visible.map(([Icon, label, lines]) => (
+					<div
+						className="grid gap-1.5 px-4 py-3.5 sm:grid-cols-[7rem_1fr] sm:gap-4 sm:px-5"
+						key={label}
+					>
+						<dt className="flex items-center gap-2 self-start font-medium text-foreground text-sm leading-6">
+							<Icon
+								aria-hidden="true"
+								className="size-4 shrink-0 text-primary"
+							/>
+							{label}
+						</dt>
+						<dd className="text-muted-foreground text-sm leading-6">
+							{lines.length === 1 ? (
+								<p>{lines[0]}</p>
+							) : (
+								<ul className="grid gap-1">
+									{lines.map((line, index) => (
+										<li className="flex gap-2" key={line}>
+											<span className="mt-[0.6875rem] size-1 shrink-0 rounded-full bg-primary/70" />
+											<span className={cn(index === 0 && "text-foreground")}>
+												{line}
+											</span>
+										</li>
+									))}
+								</ul>
+							)}
+						</dd>
+					</div>
+				))}
+			</dl>
 		</section>
 	);
+}
+
+/** Policy text is written as one run of clauses; show each clause on its own line. */
+function policyLines(text: string | null | undefined) {
+	return (text ?? "")
+		.split(/(?<=[。；;])/)
+		.map((line) => line.trim().replace(/[；;]$/, ""))
+		.filter(Boolean);
 }
 
 export function ProductLoadingSkeleton() {

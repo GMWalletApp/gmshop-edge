@@ -32,21 +32,23 @@ describe("ChatGPT region guide", () => {
 		await act(async () => root?.render(<ChatGptRegionGuide />));
 
 		const text = container.textContent ?? "";
-		expect(text).toContain("Philippines recharge");
-		expect(text).toContain("Pro $100 tier");
-		expect(text).toContain("Pro $200 tier");
-		expect(text).not.toContain("ChatGPT Pro 20X");
-		expect(text).toContain("US iOS recharge");
+		expect(text).toContain("US iOS");
+		expect(text).toContain("Supports replacement");
+		expect(text).toContain("You do not provide an Apple ID");
+		expect(text).toContain("remaining time is not added");
+		expect(text).toContain("Philippines new");
 		expect(text).toContain("Cannot replace an active subscription");
+		expect(text).toContain("Philippines renewal");
 		expect(text).toContain("PHP 8,919.64");
 		expect(text).toContain("no upgrades");
-		expect(text).toContain("separate Philippines renewal option");
-		expect(text).toContain("Supports replacement");
-		expect(text).toContain("you do not provide an Apple ID");
-		expect(text).toContain("remaining time is not added");
+		expect(text).toContain("Chile");
+		expect(text).toContain("Pro 500");
+		expect(text).toContain("Business");
+		expect(text).toContain("no 5-hour limit");
+		expect(text).not.toContain("Pro 20X");
 		expect(text).toContain("Price differences come from recharge channels");
 		expect(text).toContain("official ChatGPT account");
-		expect(container.querySelectorAll("article")).toHaveLength(2);
+		expect(container.querySelectorAll("li")).toHaveLength(5);
 	});
 
 	it("appears on the product page without repeating on checkout", () => {
