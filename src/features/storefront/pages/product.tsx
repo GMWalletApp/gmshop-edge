@@ -189,6 +189,7 @@ export function StorefrontProductPage({
 	const purchaseLimit = selectedItem
 		? purchaseLimitSummary(selectedItem)
 		: null;
+	const planGroups = groupPlans(data.sellableItems);
 	const showPurchaseOptions =
 		Boolean(preferredItemId) ||
 		data.sellableItems.length > 1 ||
@@ -284,6 +285,7 @@ export function StorefrontProductPage({
 							sellableItem={selectedItem}
 						/>
 					) : null}
+					{data.id === chatGptRechargeProductId ? <ChatGptRegionGuide /> : null}
 				</div>
 				<div className="min-w-0 lg:sticky lg:top-26 lg:h-fit">
 					<div className="flex flex-wrap gap-2">
@@ -351,69 +353,128 @@ export function StorefrontProductPage({
 									{m.guide_unavailable()}
 								</p>
 							) : null}
-							<div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-2">
-								{data.sellableItems.map((item) => {
-									const selected = item.id === selectedItem?.id;
-									return (
-										<button
-											aria-pressed={selected}
-											className="relative grid min-h-24 content-between gap-4 overflow-hidden rounded-xl bg-muted/40 p-4 text-left ring-offset-background transition enabled:hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[selected]:bg-primary/10 data-[selected]:ring-2 data-[selected]:ring-primary data-[selected]:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45"
-											data-selected={selected || undefined}
-											disabled={!isAvailable(item)}
-											key={item.id}
-											onClick={() => {
-												setSelectedItemId(item.id);
-												setQuantity(item.minimumQuantity);
-											}}
-											type="button"
+							{planGroups ? (
+								<div className="grid gap-2">
+									{planGroups.map((group) => (
+										<div
+											className="grid gap-2 rounded-xl bg-muted/25 p-2.5 sm:grid-cols-[5.5rem_1fr] sm:items-center sm:gap-3"
+											key={group.label}
 										>
-											<span className="flex items-start justify-between gap-2">
-												<span className="font-medium leading-snug">
-													{item.name}
-												</span>
-												{item.availableStock >= 0 ? (
-													<span className="shrink-0 text-muted-foreground text-xs tabular-nums">
-														{m.store_stock({ count: item.availableStock })}
-													</span>
-												) : !isAvailable(item) ? (
-													<span className="shrink-0 text-muted-foreground text-xs">
-														{m.store_sold_out()}
-													</span>
-												) : null}
-												{item.saleDisabled ? (
-													<span className="shrink-0 text-destructive text-xs">
-														{m.store_sale_disabled()}
-													</span>
-												) : null}
+											<span className="px-1 font-semibold text-sm">
+												{group.label}
 											</span>
-											<span className="font-semibold text-base text-primary">
-												<StoreMoney
-													amountMinor={item.priceMinor}
-													currency={item.currency}
-													decimals={item.currencyDecimals}
-												/>
-											</span>
-											<span
-												aria-hidden="true"
-												className={cn(
-													"pointer-events-none absolute -right-9 bottom-3 w-28 -rotate-[32deg] border-y py-0.5 text-center font-semibold text-[9px] leading-none tracking-[0.08em]",
-													item.fulfillmentSource === "supplier"
-														? "border-emerald-400/35 bg-emerald-400/12 text-emerald-300"
-														: item.fulfillmentSource === "manual"
-															? "border-amber-300/35 bg-amber-300/12 text-amber-200"
-															: "border-primary/35 bg-primary/12 text-primary",
-												)}
+											<div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2">
+												{group.options.map(({ item, label }) => {
+													const selected = item.id === selectedItem?.id;
+													return (
+														<button
+															aria-label={item.name}
+															aria-pressed={selected}
+															className="grid gap-1 rounded-lg border border-border/60 bg-background/60 px-3 py-2.5 text-left ring-offset-background transition enabled:hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[selected]:border-primary data-[selected]:bg-primary/10 data-[selected]:ring-1 data-[selected]:ring-primary disabled:cursor-not-allowed disabled:opacity-45"
+															data-selected={selected || undefined}
+															disabled={!isAvailable(item)}
+															key={item.id}
+															onClick={() => {
+																setSelectedItemId(item.id);
+																setQuantity(item.minimumQuantity);
+															}}
+															type="button"
+														>
+															<span className="font-medium text-sm leading-snug">
+																{label}
+															</span>
+															<span className="flex items-baseline justify-between gap-2">
+																<span className="font-semibold text-primary text-sm">
+																	<StoreMoney
+																		amountMinor={item.priceMinor}
+																		currency={item.currency}
+																		decimals={item.currencyDecimals}
+																	/>
+																</span>
+																<span className="shrink-0 text-muted-foreground text-[11px] tabular-nums">
+																	{item.saleDisabled
+																		? m.store_sale_disabled()
+																		: !isAvailable(item)
+																			? m.store_sold_out()
+																			: item.availableStock >= 0
+																				? m.store_stock({
+																						count: item.availableStock,
+																					})
+																				: null}
+																</span>
+															</span>
+														</button>
+													);
+												})}
+											</div>
+										</div>
+									))}
+								</div>
+							) : (
+								<div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-2">
+									{data.sellableItems.map((item) => {
+										const selected = item.id === selectedItem?.id;
+										return (
+											<button
+												aria-pressed={selected}
+												className="relative grid min-h-24 content-between gap-4 overflow-hidden rounded-xl bg-muted/40 p-4 text-left ring-offset-background transition enabled:hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[selected]:bg-primary/10 data-[selected]:ring-2 data-[selected]:ring-primary data-[selected]:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45"
+												data-selected={selected || undefined}
+												disabled={!isAvailable(item)}
+												key={item.id}
+												onClick={() => {
+													setSelectedItemId(item.id);
+													setQuantity(item.minimumQuantity);
+												}}
+												type="button"
 											>
-												{item.fulfillmentSource === "supplier"
-													? m.store_auto_delivery()
-													: item.fulfillmentSource === "manual"
-														? m.store_manual_procurement()
-														: m.store_local_delivery()}
-											</span>
-										</button>
-									);
-								})}
-							</div>
+												<span className="flex items-start justify-between gap-2">
+													<span className="font-medium leading-snug">
+														{item.name}
+													</span>
+													{item.availableStock >= 0 ? (
+														<span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+															{m.store_stock({ count: item.availableStock })}
+														</span>
+													) : !isAvailable(item) ? (
+														<span className="shrink-0 text-muted-foreground text-xs">
+															{m.store_sold_out()}
+														</span>
+													) : null}
+													{item.saleDisabled ? (
+														<span className="shrink-0 text-destructive text-xs">
+															{m.store_sale_disabled()}
+														</span>
+													) : null}
+												</span>
+												<span className="font-semibold text-base text-primary">
+													<StoreMoney
+														amountMinor={item.priceMinor}
+														currency={item.currency}
+														decimals={item.currencyDecimals}
+													/>
+												</span>
+												<span
+													aria-hidden="true"
+													className={cn(
+														"pointer-events-none absolute -right-9 bottom-3 w-28 -rotate-[32deg] border-y py-0.5 text-center font-semibold text-[9px] leading-none tracking-[0.08em]",
+														item.fulfillmentSource === "supplier"
+															? "border-emerald-400/35 bg-emerald-400/12 text-emerald-300"
+															: item.fulfillmentSource === "manual"
+																? "border-amber-300/35 bg-amber-300/12 text-amber-200"
+																: "border-primary/35 bg-primary/12 text-primary",
+													)}
+												>
+													{item.fulfillmentSource === "supplier"
+														? m.store_auto_delivery()
+														: item.fulfillmentSource === "manual"
+															? m.store_manual_procurement()
+															: m.store_local_delivery()}
+												</span>
+											</button>
+										);
+									})}
+								</div>
+							)}
 						</fieldset>
 					) : null}
 					{data.id === claudeRechargeProductId ? (
@@ -583,7 +644,6 @@ export function StorefrontProductPage({
 					</div>
 				</div>
 			</div>
-			{data.id === chatGptRechargeProductId ? <ChatGptRegionGuide /> : null}
 			{data.id === claudeRechargeProductId ? <ClaudePurchaseGuide /> : null}
 			{relatedProducts.isLoading ? (
 				<RelatedProductsLoadingSkeleton />
@@ -1080,4 +1140,36 @@ function entitlementSummary(sellableItem: SellableItem) {
 	]
 		.filter(Boolean)
 		.join(" · ");
+}
+
+/**
+ * Names follow "Plan｜Channel｜Term" (e.g. "ChatGPT Plus｜菲区｜1个月"). Group the
+ * channels of one plan into a row when that actually merges something; otherwise
+ * the flat grid reads better.
+ */
+export function groupPlans(items: SellableItem[]) {
+	const parsed = items.map((item) => {
+		const parts = item.name.split("｜").map((part) => part.trim());
+		const variant = parts
+			.slice(1)
+			.filter((part) => !/^\d+\s*个?月$/.test(part));
+		return {
+			item,
+			plan: parts[0] ?? item.name,
+			label: variant.join("｜") || parts[1] || parts[0],
+		};
+	});
+	const groups: { label: string; options: typeof parsed }[] = [];
+	for (const entry of parsed) {
+		const group = groups.find((candidate) => candidate.label === entry.plan);
+		if (group) group.options.push(entry);
+		else groups.push({ label: entry.plan, options: [entry] });
+	}
+	if (groups.length === items.length) return null;
+	// Drop the brand word every row repeats ("ChatGPT Plus" → "Plus").
+	const brand = groups[0]?.label.split(" ")[0];
+	if (brand && groups.every((group) => group.label.startsWith(`${brand} `)))
+		for (const group of groups)
+			group.label = group.label.slice(brand.length + 1);
+	return groups;
 }

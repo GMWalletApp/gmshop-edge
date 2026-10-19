@@ -1,8 +1,8 @@
 import {
-	Building2,
-	Globe2,
+	CreditCard,
 	type LucideIcon,
 	RotateCw,
+	Route,
 	Smartphone,
 } from "lucide-react";
 import { cn } from "#/lib/utils";
@@ -10,15 +10,13 @@ import { m } from "#/paraglide/messages";
 
 export const chatGptRechargeProductId = "2a794b89-3bb9-49d4-8691-0d13a1606869";
 
-type Tone = "replace" | "expired" | "renewal" | "team";
+type Tone = "replace" | "free" | "renewal";
 
 const toneClass: Record<Tone, string> = {
 	replace:
 		"border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-	expired:
-		"border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+	free: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
 	renewal: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-	team: "border-primary/30 bg-primary/10 text-primary",
 };
 
 export function ChatGptRegionGuide() {
@@ -27,108 +25,84 @@ export function ChatGptRegionGuide() {
 		title: string;
 		badge: string;
 		tone: Tone;
-		fit: string;
+		rule: string;
 		plans: string;
 	}[] = [
 		{
 			icon: Smartphone,
-			title: m.store_chatgpt_region_us_title(),
+			title: m.store_chatgpt_region_ios_title(),
 			badge: m.store_chatgpt_region_badge_replace(),
 			tone: "replace",
-			fit: m.store_chatgpt_region_us_fit(),
-			plans: m.store_chatgpt_region_us_plans(),
+			rule: m.store_chatgpt_region_ios_rule(),
+			plans: m.store_chatgpt_region_ios_plans(),
 		},
 		{
-			icon: Globe2,
-			title: m.store_chatgpt_region_ph_title(),
-			badge: m.store_chatgpt_region_badge_expired(),
-			tone: "expired",
-			fit: m.store_chatgpt_region_ph_fit(),
-			plans: m.store_chatgpt_region_ph_plans(),
+			icon: CreditCard,
+			title: m.store_chatgpt_region_card_title(),
+			badge: m.store_chatgpt_region_badge_free(),
+			tone: "free",
+			rule: m.store_chatgpt_region_card_rule(),
+			plans: m.store_chatgpt_region_card_plans(),
 		},
 		{
 			icon: RotateCw,
 			title: m.store_chatgpt_region_renewal_title(),
 			badge: m.store_chatgpt_region_badge_renewal(),
 			tone: "renewal",
-			fit: m.store_chatgpt_region_renewal_fit(),
+			rule: m.store_chatgpt_region_renewal_rule(),
 			plans: m.store_chatgpt_region_renewal_plans(),
-		},
-		{
-			icon: Globe2,
-			title: m.store_chatgpt_region_cl_title(),
-			badge: m.store_chatgpt_region_badge_expired(),
-			tone: "expired",
-			fit: m.store_chatgpt_region_cl_fit(),
-			plans: m.store_chatgpt_region_cl_plans(),
-		},
-		{
-			icon: Building2,
-			title: m.store_chatgpt_region_business_title(),
-			badge: m.store_chatgpt_region_badge_team(),
-			tone: "team",
-			fit: m.store_chatgpt_region_business_fit(),
-			plans: m.store_chatgpt_region_business_plans(),
 		},
 	];
 	return (
 		<section
 			aria-labelledby="chatgpt-region-guide-title"
-			className="my-10 scroll-mt-24 rounded-2xl border border-border/70 bg-card/40 p-5 sm:p-8"
+			className="mt-3 scroll-mt-24 rounded-2xl border border-border/70 bg-card/55 p-5 shadow-sm"
 			data-chatgpt-region-guide
 			id="chatgpt-region-guide"
 		>
-			<header className="max-w-3xl space-y-2">
-				<h2
-					className="font-semibold text-xl tracking-tight sm:text-2xl"
-					id="chatgpt-region-guide-title"
-				>
-					{m.store_chatgpt_region_title()}
-				</h2>
-				<p className="text-muted-foreground text-sm leading-6">
-					{m.store_chatgpt_region_intro()}
-				</p>
-			</header>
-
-			<div className="mt-6 overflow-hidden rounded-xl border border-border/70 bg-background/60">
-				<div className="hidden grid-cols-[13rem_1fr_15rem] gap-6 border-border/70 border-b px-5 py-2.5 font-medium text-muted-foreground text-xs md:grid">
-					<span>{m.store_chatgpt_region_col_channel()}</span>
-					<span>{m.store_chatgpt_region_col_fit()}</span>
-					<span>{m.store_chatgpt_region_col_plans()}</span>
+			<div className="flex items-start gap-3">
+				<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+					<Route aria-hidden="true" className="size-5" />
+				</span>
+				<div className="min-w-0">
+					<h2
+						className="font-semibold text-lg leading-snug"
+						id="chatgpt-region-guide-title"
+					>
+						{m.store_chatgpt_region_title()}
+					</h2>
+					<p className="mt-1 text-muted-foreground text-sm leading-6">
+						{m.store_chatgpt_region_intro()}
+					</p>
 				</div>
-				<ul className="divide-y divide-border/60">
-					{channels.map(({ icon: Icon, title, badge, tone, fit, plans }) => (
-						<li
-							className="grid gap-2.5 px-4 py-4 md:grid-cols-[13rem_1fr_15rem] md:items-center md:gap-6 md:px-5"
-							key={title}
-						>
-							<div className="flex items-center gap-3">
-								<span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground">
-									<Icon aria-hidden="true" className="size-4" />
-								</span>
-								<div className="min-w-0">
-									<h3 className="font-semibold text-sm">{title}</h3>
-									<span
-										className={cn(
-											"mt-1 inline-block rounded-full border px-2 py-px font-medium text-[11px] leading-5",
-											toneClass[tone],
-										)}
-									>
-										{badge}
-									</span>
-								</div>
-							</div>
-							<p className="text-sm leading-6">{fit}</p>
-							<p className="text-muted-foreground text-sm leading-6">
-								<span className="text-muted-foreground/70 md:hidden">
-									{m.store_chatgpt_region_col_plans()}：
-								</span>
-								{plans}
-							</p>
-						</li>
-					))}
-				</ul>
 			</div>
+
+			<ul className="mt-4 grid gap-2.5">
+				{channels.map(({ icon: Icon, title, badge, tone, rule, plans }) => (
+					<li
+						className="rounded-xl border border-border/60 bg-background/50 p-4"
+						key={title}
+					>
+						<div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+							<Icon aria-hidden="true" className="size-4 text-foreground/80" />
+							<h3 className="font-semibold text-sm">{title}</h3>
+							<span
+								className={cn(
+									"rounded-full border px-2 py-px font-medium text-[11px] leading-5",
+									toneClass[tone],
+								)}
+							>
+								{badge}
+							</span>
+						</div>
+						<p className="mt-2 text-sm leading-6">{rule}</p>
+						<p className="mt-1.5 text-muted-foreground text-xs leading-5">
+							{m.store_chatgpt_region_plans_label()}
+							{plans}
+						</p>
+					</li>
+				))}
+			</ul>
 
 			<p className="mt-4 text-muted-foreground text-xs leading-5">
 				{m.store_chatgpt_region_common()}
