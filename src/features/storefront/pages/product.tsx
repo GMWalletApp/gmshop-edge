@@ -57,6 +57,7 @@ import {
 	getStorefrontProductFn,
 	listStorefrontCatalogFn,
 } from "#/features/storefront/server/catalog";
+import { useFitStickyTop } from "#/features/storefront/sticky-top";
 import { cn } from "#/lib/utils";
 import { m } from "#/paraglide/messages";
 import { getLocale } from "#/paraglide/runtime";
@@ -109,6 +110,8 @@ export function StorefrontProductPage({
 		staleTime: 30_000,
 	});
 	const [selectedItemId, setSelectedItemId] = useState<string>();
+	// 104px = the sticky header (top-26).
+	const [purchaseColumnTop, purchaseColumn] = useFitStickyTop(104);
 	const [selectedMediaId, setSelectedMediaId] = useState<string>();
 	const [quantity, setQuantity] = useState(1);
 	useEffect(() => {
@@ -284,7 +287,11 @@ export function StorefrontProductPage({
 						</div>
 					) : null}
 				</div>
-				<div className="min-w-0 lg:sticky lg:top-26 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
+				<div
+					className="min-w-0 lg:sticky lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start"
+					ref={purchaseColumn}
+					style={{ top: purchaseColumnTop }}
+				>
 					<div className="flex flex-wrap gap-2">
 						{data.tags.map((tag) => (
 							<Badge asChild key={tag} variant="secondary">
