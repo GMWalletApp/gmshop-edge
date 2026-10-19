@@ -859,6 +859,43 @@ export async function previewStoreCoupon(
 	return priceStoreCoupon(db, coupon, lines);
 }
 
+// Public checkout quote. Budgeted per IP, and every coupon rejection looks the
+// same so the endpoint cannot be used to probe which codes exist.
+export async function quoteStoreCouponForVisitor(
+	db: D1Database,
+	clientIp: string | null | undefined,
+	code: string,
+	items: readonly { id: string; quantity: number }[],
+	owner: { userId?: string; normalizedEmail: string | null },
+	channelId?: string,
+) {
+	const ip = clientIp?.trim().slice(0, 45);
+	if (ip) {
+		const budget = await claimFixedWindowRateLimit(db, {
+			bucketKey: `checkout:coupon-quote:ip:${ip}`,
+			limit: 120,
+			windowMs: 600_000,
+		});
+		if (!budget.allowed)
+			throw new DomainError(
+				"coupon_quote_rate_limited",
+				429,
+				"Too many coupon checks. Please try again later.",
+			);
+	}
+	try {
+		return await previewStoreCoupon(db, code, items, owner, channelId);
+	} catch (error) {
+		if (
+			error instanceof DomainError &&
+			(error.code.startsWith("coupon_") ||
+				error.code === "contact_email_required")
+		)
+			throw new DomainError("coupon_unavailable", 409, "Coupon is unavailable");
+		throw error;
+	}
+}
+
 async function priceStoreCoupon(
 	db: D1Database,
 	coupon: CouponRow | null,
