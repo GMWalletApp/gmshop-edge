@@ -113,6 +113,7 @@ import { Route as ApiSupportWebConversationsRouteImport } from './routes/api/sup
 import { Route as ApiSupportWebCloseRouteImport } from './routes/api/support/web/close'
 import { Route as ApiShopRenewalUnsubscribeRouteImport } from './routes/api/shop/renewal/unsubscribe'
 import { Route as ApiShopAutomationCallbackRouteImport } from './routes/api/shop/automation/callback'
+import { Route as ApiOpsRestockSwapRouteImport } from './routes/api/ops/restock/swap'
 import { Route as ApiOpsRestockReconcileRouteImport } from './routes/api/ops/restock/reconcile'
 import { Route as ApiInternalAgentProgramOrderProfitRouteImport } from './routes/api/internal/agent-program/order-profit'
 import { Route as ApiConfigurationLogoScopeIdRouteImport } from './routes/api/configuration-logo/$scope/$id'
@@ -669,6 +670,11 @@ const ApiShopAutomationCallbackRoute =
     path: '/api/shop/automation/callback',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiOpsRestockSwapRoute = ApiOpsRestockSwapRouteImport.update({
+  id: '/swap',
+  path: '/swap',
+  getParentRoute: () => ApiOpsRestockRoute,
+} as any)
 const ApiOpsRestockReconcileRoute = ApiOpsRestockReconcileRouteImport.update({
   id: '/reconcile',
   path: '/reconcile',
@@ -879,6 +885,7 @@ export interface FileRoutesByFullPath {
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
   '/api/internal/agent-program/order-profit': typeof ApiInternalAgentProgramOrderProfitRoute
   '/api/ops/restock/reconcile': typeof ApiOpsRestockReconcileRoute
+  '/api/ops/restock/swap': typeof ApiOpsRestockSwapRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
   '/api/shop/renewal/unsubscribe': typeof ApiShopRenewalUnsubscribeRoute
   '/api/support/web/close': typeof ApiSupportWebCloseRoute
@@ -993,6 +1000,7 @@ export interface FileRoutesByTo {
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
   '/api/internal/agent-program/order-profit': typeof ApiInternalAgentProgramOrderProfitRoute
   '/api/ops/restock/reconcile': typeof ApiOpsRestockReconcileRoute
+  '/api/ops/restock/swap': typeof ApiOpsRestockSwapRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
   '/api/shop/renewal/unsubscribe': typeof ApiShopRenewalUnsubscribeRoute
   '/api/support/web/close': typeof ApiSupportWebCloseRoute
@@ -1119,6 +1127,7 @@ export interface FileRoutesById {
   '/api/configuration-logo/$scope/$id': typeof ApiConfigurationLogoScopeIdRoute
   '/api/internal/agent-program/order-profit': typeof ApiInternalAgentProgramOrderProfitRoute
   '/api/ops/restock/reconcile': typeof ApiOpsRestockReconcileRoute
+  '/api/ops/restock/swap': typeof ApiOpsRestockSwapRoute
   '/api/shop/automation/callback': typeof ApiShopAutomationCallbackRoute
   '/api/shop/renewal/unsubscribe': typeof ApiShopRenewalUnsubscribeRoute
   '/api/support/web/close': typeof ApiSupportWebCloseRoute
@@ -1244,6 +1253,7 @@ export interface FileRouteTypes {
     | '/api/configuration-logo/$scope/$id'
     | '/api/internal/agent-program/order-profit'
     | '/api/ops/restock/reconcile'
+    | '/api/ops/restock/swap'
     | '/api/shop/automation/callback'
     | '/api/shop/renewal/unsubscribe'
     | '/api/support/web/close'
@@ -1358,6 +1368,7 @@ export interface FileRouteTypes {
     | '/api/configuration-logo/$scope/$id'
     | '/api/internal/agent-program/order-profit'
     | '/api/ops/restock/reconcile'
+    | '/api/ops/restock/swap'
     | '/api/shop/automation/callback'
     | '/api/shop/renewal/unsubscribe'
     | '/api/support/web/close'
@@ -1483,6 +1494,7 @@ export interface FileRouteTypes {
     | '/api/configuration-logo/$scope/$id'
     | '/api/internal/agent-program/order-profit'
     | '/api/ops/restock/reconcile'
+    | '/api/ops/restock/swap'
     | '/api/shop/automation/callback'
     | '/api/shop/renewal/unsubscribe'
     | '/api/support/web/close'
@@ -2284,6 +2296,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiShopAutomationCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ops/restock/swap': {
+      id: '/api/ops/restock/swap'
+      path: '/swap'
+      fullPath: '/api/ops/restock/swap'
+      preLoaderRoute: typeof ApiOpsRestockSwapRouteImport
+      parentRoute: typeof ApiOpsRestockRoute
+    }
     '/api/ops/restock/reconcile': {
       id: '/api/ops/restock/reconcile'
       path: '/reconcile'
@@ -2695,10 +2714,12 @@ const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
 
 interface ApiOpsRestockRouteChildren {
   ApiOpsRestockReconcileRoute: typeof ApiOpsRestockReconcileRoute
+  ApiOpsRestockSwapRoute: typeof ApiOpsRestockSwapRoute
 }
 
 const ApiOpsRestockRouteChildren: ApiOpsRestockRouteChildren = {
   ApiOpsRestockReconcileRoute: ApiOpsRestockReconcileRoute,
+  ApiOpsRestockSwapRoute: ApiOpsRestockSwapRoute,
 }
 
 const ApiOpsRestockRouteWithChildren = ApiOpsRestockRoute._addFileChildren(
@@ -2780,13 +2801,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
