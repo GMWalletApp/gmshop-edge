@@ -48,23 +48,7 @@ export async function authenticateSupplierApi(
 			secret_encrypted: string;
 			allowed_callback_origin: string | null;
 		}>();
-	if (!row) throw unauthorized();
-	const [keyBudget, userBudget] = await Promise.all([
-		claimFixedWindowRateLimit(db, {
-			bucketKey: `supplier-api:key:${row.id}`,
-			limit: 120,
-			windowMs: 60_000,
-			now,
-		}),
-		claimFixedWindowRateLimit(db, {
-			bucketKey: `supplier-api:user:${row.user_id}`,
-			limit: 300,
-			windowMs: 60_000,
-			now,
-		}),
-	]);
-	if (!keyBudget.allowed || !userBudget.allowed)
-		throw new DomainError("supplier_rate_limited", 429, "Rate limit exceeded");
+	if (!row) throw await rejectUnauthenticated(db, request, now);
 	const runtime = await loadRuntimeConfig(db);
 	if (!runtime.commerceSecret)
 		throw new DomainError(
@@ -85,7 +69,26 @@ export async function authenticateSupplierApi(
 		rawBody,
 		apiSecret: secret,
 	});
-	if (!safeEqual(signature, expected)) throw unauthorized();
+	// Only signed requests may spend a key's budget; otherwise anyone who knows
+	// a public key ID could exhaust it and lock the real partner out.
+	if (!safeEqual(signature, expected))
+		throw await rejectUnauthenticated(db, request, now);
+	const [keyBudget, userBudget] = await Promise.all([
+		claimFixedWindowRateLimit(db, {
+			bucketKey: `supplier-api:key:${row.id}`,
+			limit: 120,
+			windowMs: 60_000,
+			now,
+		}),
+		claimFixedWindowRateLimit(db, {
+			bucketKey: `supplier-api:user:${row.user_id}`,
+			limit: 300,
+			windowMs: 60_000,
+			now,
+		}),
+	]);
+	if (!keyBudget.allowed || !userBudget.allowed)
+		throw new DomainError("supplier_rate_limited", 429, "Rate limit exceeded");
 	try {
 		await db.batch([
 			db
@@ -130,6 +133,25 @@ export async function supplierApiIsEnabled(db: D1Database) {
 		)
 		.first<{ value: string }>();
 	return setting ? JSON.parse(setting.value) === true : false;
+}
+
+// Failed authentication is budgeted by source address, separately from the
+// per-key budget that only authenticated traffic consumes.
+async function rejectUnauthenticated(
+	db: D1Database,
+	request: Request,
+	now: number,
+) {
+	const ip = request.headers.get("cf-connecting-ip")?.slice(0, 45) || "unknown";
+	const budget = await claimFixedWindowRateLimit(db, {
+		bucketKey: `supplier-api:auth-failure:ip:${ip}`,
+		limit: 30,
+		windowMs: 60_000,
+		now,
+	});
+	return budget.allowed
+		? unauthorized()
+		: new DomainError("supplier_rate_limited", 429, "Rate limit exceeded");
 }
 
 function safeEqual(left: string, right: string) {

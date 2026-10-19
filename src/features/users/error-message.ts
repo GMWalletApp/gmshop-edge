@@ -24,6 +24,10 @@ export function userOperationErrorMessage(error: unknown) {
 			return m.admin_users_error_role_unavailable();
 		case "own_roles_required":
 			return m.admin_users_error_own_roles_required();
+		case "cannot_change_own_roles":
+			return m.admin_users_error_cannot_change_own_roles();
+		case "permission_escalation":
+			return m.admin_users_error_permission_escalation();
 		case "user_id_required":
 		case "invalid_input":
 			return m.admin_users_error_invalid_input();

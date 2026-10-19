@@ -9,6 +9,7 @@ import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
 import { authClient } from "#/features/auth/auth-client";
+import { useTurnstile } from "#/features/auth/components/turnstile";
 import { m } from "#/paraglide/messages";
 
 export function ForgotPasswordPage() {
@@ -19,10 +20,18 @@ export function ForgotPasswordPage() {
 	const [confirmation, setConfirmation] = useState("");
 	const [pending, setPending] = useState(false);
 	const [sent, setSent] = useState(false);
+	const challenge = useTurnstile("register");
 
 	async function requestCode() {
+		if (!challenge.ready)
+			return toast.error(m.auth_human_verification_required());
 		setPending(true);
-		const result = await authClient.emailOtp.requestPasswordReset({ email });
+		const result = await authClient.emailOtp.requestPasswordReset(
+			{ email },
+			{ headers: challenge.headers },
+		);
+		// Turnstile tokens are single-use; every send needs a fresh challenge.
+		challenge.reset();
 		setPending(false);
 		if (result.error) return toast.error(m.auth_reset_request_failed());
 		setSent(true);
@@ -120,8 +129,10 @@ export function ForgotPasswordPage() {
 							value={confirmation}
 						/>
 					</>
-				) : null}
-				<Button disabled={pending} type="submit">
+				) : (
+					challenge.widget
+				)}
+				<Button disabled={pending || (!sent && !challenge.ready)} type="submit">
 					{pending ? (
 						<Loader2 className="animate-spin" />
 					) : sent ? (
@@ -136,7 +147,12 @@ export function ForgotPasswordPage() {
 			</form>
 			{sent ? (
 				<div className="flex flex-wrap gap-2">
-					<Button disabled={pending} onClick={requestCode} variant="ghost">
+					{challenge.widget}
+					<Button
+						disabled={pending || !challenge.ready}
+						onClick={requestCode}
+						variant="ghost"
+					>
 						{m.auth_reset_resend_code()}
 					</Button>
 					<Button

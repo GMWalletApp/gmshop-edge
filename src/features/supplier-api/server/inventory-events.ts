@@ -91,7 +91,33 @@ export async function deliverInventoryEvent(
 		timestamp: payload.changedAt,
 	});
 	let delivered = 0;
+	let failed = 0;
+	// Each subscriber is isolated: one slow, broken or redirecting partner must
+	// not starve the others. The event is a re-sync hint, so a failed delivery
+	// is not retried for everyone; the next inventory change notifies again.
 	for (const subscriber of subscribers.results) {
+		try {
+			await notifySubscriber(subscriber);
+			delivered++;
+		} catch (error) {
+			failed++;
+			console.warn(
+				JSON.stringify({
+					event: "inventory_event_callback_failed",
+					outboxId: event.id,
+					keyId: subscriber.key_id,
+					reason: error instanceof Error ? error.message : "unknown",
+				}),
+			);
+		}
+	}
+	return { delivered, failed };
+
+	async function notifySubscriber(subscriber: {
+		key_id: string;
+		secret_encrypted: string;
+		allowed_callback_origin: string;
+	}) {
 		const target = new URL(callbackPath, subscriber.allowed_callback_origin);
 		if (!isSafeWebhookUrl(target.toString()))
 			throw new Error("inventory_event_callback_unsafe");
@@ -104,6 +130,8 @@ export async function deliverInventoryEvent(
 		);
 		const response = await fetcher(target, {
 			method: "POST",
+			// A redirect could bounce the signed request to an unchecked host.
+			redirect: "manual",
 			headers: {
 				"Content-Type": "application/json",
 				"GMShop-Edge-Api-Key": subscriber.key_id,
@@ -131,7 +159,5 @@ export async function deliverInventoryEvent(
 			throw new Error("inventory_event_callback_invalid");
 		}
 		callbackResponseSchema.parse(result);
-		delivered++;
 	}
-	return { delivered };
 }

@@ -26,6 +26,7 @@ import {
 import {
 	createMultiStoreOrder,
 	previewStoreCoupon,
+	quoteStoreCouponForVisitor,
 } from "#/features/storefront/server/multi-order";
 import { getWallet } from "#/features/wallet/server/ledger";
 import { applyMigrations } from "./migrations";
@@ -633,6 +634,29 @@ describe("invitation and personal recall checkout", { timeout: 30000 }, () => {
 				})
 			).discountMinor,
 		).toBe("400");
+	});
+	it("budgets public coupon quotes per IP and hides why a code was rejected", async () => {
+		const items = [{ id: sku, quantity: 1 }];
+		const guest = { normalizedEmail: "guest@example.com" };
+		await expect(
+			quoteStoreCouponForVisitor(
+				db,
+				"198.51.100.40",
+				"NO-SUCH-CODE",
+				items,
+				guest,
+			),
+		).rejects.toMatchObject({ code: "coupon_unavailable", status: 409 });
+		await db
+			.prepare(
+				`INSERT INTO rate_limit_counters(id,bucket_key,window_start,count,expires_at,created_at,updated_at)
+				 VALUES ('quote-full','checkout:coupon-quote:ip:198.51.100.41',?,120,?,1,1)`,
+			)
+			.bind(Math.floor(Date.now() / 600_000) * 600_000, Date.now() + 1_200_000)
+			.run();
+		await expect(
+			quoteStoreCouponForVisitor(db, "198.51.100.41", "ANY", items, guest),
+		).rejects.toMatchObject({ code: "coupon_quote_rate_limited", status: 429 });
 	});
 	it("releases personal coupons on explicit cancellation, without consuming their one successful use", async () => {
 		const old = await emptyOrder();

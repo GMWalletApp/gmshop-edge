@@ -109,6 +109,32 @@ describe("payment provider families", () => {
 		).toMatchObject({
 			epusdtSecretKey: [m.payment_channels_validation_secret_length()],
 		});
+		for (const epusdtBaseUrl of [
+			"http://pay.example.com",
+			"https://10.0.0.8",
+			"https://pay.internal",
+			"https://pay.example.com:8443",
+		])
+			expect(
+				paymentChannelFormErrors({
+					...common,
+					provider: "gmpay",
+					epusdtBaseUrl,
+					epusdtPid: "12345",
+					epusdtSecretKey: "12345678",
+				}),
+			).toMatchObject({
+				epusdtBaseUrl: [m.payment_channels_validation_service_url()],
+			});
+		expect(
+			paymentChannelFormErrors({
+				...common,
+				provider: "gmpay",
+				epusdtBaseUrl: "https://pay.example.com:443",
+				epusdtPid: "12345",
+				epusdtSecretKey: "12345678",
+			}),
+		).not.toHaveProperty("epusdtBaseUrl");
 		expect(
 			paymentChannelFormErrors({
 				...common,

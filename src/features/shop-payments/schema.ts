@@ -193,6 +193,13 @@ export const paymentChannelInputSchema = z
 				},
 				context,
 			);
+			// New configuration only: stored channels keep working at payment time.
+			if (value.epusdtBaseUrl && URL.parse(value.epusdtBaseUrl)?.port)
+				context.addIssue({
+					code: "custom",
+					path: ["epusdtBaseUrl"],
+					message: "Payment service URLs cannot use a custom port",
+				});
 		}
 	});
 

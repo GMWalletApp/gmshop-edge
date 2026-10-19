@@ -73,11 +73,19 @@ export async function enforceDurableAuthRateLimit(
 				"/request-password-reset",
 			].includes(path)
 		)
-			limits.push({
-				bucketKey: `auth:mail:identity:${digest}`,
-				limit: 3,
-				windowMs: 600_000,
-			});
+			limits.push(
+				{
+					bucketKey: `auth:mail:identity:${digest}`,
+					limit: 3,
+					windowMs: 600_000,
+				},
+				// Daily ceiling per recipient so rotating IPs cannot mail-bomb one inbox.
+				{
+					bucketKey: `auth:mail:daily:${digest}`,
+					limit: 10,
+					windowMs: 86_400_000,
+				},
+			);
 		limits.push({
 			bucketKey: `auth:identity:${digest}`,
 			limit: 10,

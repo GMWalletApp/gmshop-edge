@@ -1,12 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
+import { assertGrantsWithinActor } from "#/features/access/permissions";
 import { RBAC_REGISTERED_ACTION_MASK } from "#/features/access/rbac-bitmask";
 import {
 	permissionsJsonFromGrants,
 	permissionsJsonSchema,
 } from "#/features/access/rbac-json";
-import { requireAdmin } from "#/features/access/server/require-admin";
+import {
+	getAdminPermissions,
+	requireAdmin,
+} from "#/features/access/server/require-admin";
 import {
 	bumpRoleMemberRevisionsStatement,
 	setCustomRoleEnabled,
@@ -97,6 +101,9 @@ export const saveSystemRoleFn = createServerFn({ method: "POST" })
 		const now = Date.now();
 		const id = data.id ?? crypto.randomUUID();
 		const permissions = normalizeSystemPermissionGrants(data.permissions);
+		// Also covers editing a role the operator holds: the ceiling is the
+		// operator's current permissions, never the role's new contents.
+		assertGrantsWithinActor(await getAdminPermissions(request), permissions);
 		const permissionsJson = JSON.stringify(
 			permissionsJsonFromGrants(permissions),
 		);

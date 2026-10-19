@@ -144,14 +144,21 @@ export const stripePaymentProvider: PaymentProviderAdapter = {
 			);
 		const event = webhookSchema.parse(JSON.parse(body));
 		const session = event.data.object;
-		const succeeded =
+		// A completed session is not proof of payment: delayed methods complete
+		// with payment_status "unpaid" and settle later via async_payment_*.
+		const paid =
+			session.payment_status === "paid" ||
+			session.payment_status === "no_payment_required";
+		const settled =
 			event.type === "checkout.session.completed" ||
 			event.type === "checkout.session.async_payment_succeeded";
 		return {
 			providerEventId: event.id,
 			providerPaymentId: session.id,
-			type: succeeded
-				? "payment_succeeded"
+			type: settled
+				? paid
+					? "payment_succeeded"
+					: "payment_pending"
 				: event.type === "checkout.session.expired"
 					? "payment_expired"
 					: "payment_failed",

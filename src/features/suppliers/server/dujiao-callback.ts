@@ -12,7 +12,10 @@ import {
 	type SupplierDiagnosticStorage,
 } from "./diagnostics";
 import { completeSupplierOrderFromCallback } from "./process";
-import { claimSupplierCallbackBudget } from "./rate-limit";
+import {
+	claimSupplierCallbackBudget,
+	claimSupplierCallbackFailureBudget,
+} from "./rate-limit";
 
 const MAX_CALLBACK_BYTES = 1024 * 1024;
 const MAX_TIMESTAMP_SKEW_SECONDS = 60;
@@ -58,8 +61,16 @@ export async function handleDujiaoSupplierCallback(
 		throw error;
 	}
 	const rawBody = new TextDecoder().decode(raw);
-	if (!(await claimSupplierCallbackBudget(db, accountId, now)))
-		return rejected("rate_limited");
+	// Unsigned traffic must not spend the account's callback budget, or anyone
+	// could starve the real supplier; failures are budgeted per source address.
+	const authenticationFailed = async () =>
+		(await claimSupplierCallbackFailureBudget(
+			db,
+			request.headers.get("cf-connecting-ip")?.slice(0, 45) || "unknown",
+			now,
+		))
+			? rejected("authentication_failed")
+			: rejected("rate_limited");
 	const apiKey = request.headers.get("Dujiao-Next-Api-Key") ?? "";
 	const timestampHeader = request.headers.get("Dujiao-Next-Timestamp") ?? "";
 	const signature = request.headers.get("Dujiao-Next-Signature") ?? "";
@@ -70,7 +81,7 @@ export async function handleDujiaoSupplierCallback(
 		!Number.isSafeInteger(timestamp) ||
 		Math.abs(Math.floor(now / 1000) - timestamp) > MAX_TIMESTAMP_SKEW_SECONDS
 	)
-		return rejected("authentication_failed");
+		return authenticationFailed();
 	const account = await db
 		.prepare(
 			`SELECT id, credentials_encrypted FROM supplier_accounts
@@ -78,15 +89,15 @@ export async function handleDujiaoSupplierCallback(
 		)
 		.bind(accountId)
 		.first<CallbackAccount>();
-	if (!account) return rejected("authentication_failed");
+	if (!account) return authenticationFailed();
 	const runtime = await loadRuntimeConfig(db);
-	if (!runtime.commerceSecret) return rejected("authentication_failed");
+	if (!runtime.commerceSecret) return authenticationFailed();
 	const credential = await findDujiaoCredentialRevision(
 		account.credentials_encrypted,
 		apiKey,
 		runtime.commerceSecret,
 	);
-	if (!credential) return rejected("authentication_failed");
+	if (!credential) return authenticationFailed();
 	const expected = signDujiaoNextRequest({
 		method: "POST",
 		path: CALLBACK_SIGNING_PATH,
@@ -95,7 +106,9 @@ export async function handleDujiaoSupplierCallback(
 		apiSecret: credential.credentials.apiSecret,
 	});
 	if (!constantTimeEqual(signature.toLowerCase(), expected))
-		return rejected("authentication_failed");
+		return authenticationFailed();
+	if (!(await claimSupplierCallbackBudget(db, accountId, now)))
+		return rejected("rate_limited");
 	let payload: z.infer<typeof callbackSchema>;
 	try {
 		payload = callbackSchema.parse(JSON.parse(rawBody));

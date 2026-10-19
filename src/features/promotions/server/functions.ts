@@ -3,7 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireStorefrontPermission } from "#/features/access/storefront-access";
 import { resolveStoreAccount } from "#/features/storefront/server/account";
-import { previewStoreCoupon } from "#/features/storefront/server/multi-order";
+import { quoteStoreCouponForVisitor } from "#/features/storefront/server/multi-order";
 import { getDb } from "#/server/db.server";
 import { openReferralCoupon } from "./coupons";
 
@@ -107,8 +107,9 @@ export const quotePromotionFn = createServerFn({ method: "POST" })
 		const request = getRequest(),
 			db = getDb(request).$client,
 			account = await resolveStoreAccount(db, request);
-		return previewStoreCoupon(
+		return quoteStoreCouponForVisitor(
 			db,
+			request.headers.get("cf-connecting-ip"),
 			data.code,
 			data.items,
 			{

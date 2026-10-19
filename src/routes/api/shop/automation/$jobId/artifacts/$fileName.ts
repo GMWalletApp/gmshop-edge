@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { uploadAutomationArtifact } from "#/features/builds/server/callback";
+import {
+	MAX_AUTOMATION_ARTIFACT_BYTES,
+	preflightAutomationArtifactUpload,
+	uploadAutomationArtifact,
+} from "#/features/builds/server/callback";
 import {
 	BodyLimitExceededError,
 	readBoundedRequestBytes,
@@ -15,18 +19,29 @@ export const Route = createFileRoute(
 			POST: async ({ request, params }) => {
 				try {
 					const env = getEnv();
+					const artifactId = request.headers.get("x-gmshop-artifact-id") ?? "";
+					await preflightAutomationArtifactUpload(
+						env.DB,
+						{ jobId: params.jobId, artifactId },
+						request.headers.get("content-length"),
+					);
 					const result = await uploadAutomationArtifact(
 						env.DB,
 						env.FILES,
 						{
 							jobId: params.jobId,
-							artifactId: request.headers.get("x-gmshop-artifact-id") ?? "",
+							artifactId,
 							fileName: params.fileName,
 							contentType:
 								request.headers.get("content-type") ??
 								"application/octet-stream",
 						},
-						(await readBoundedRequestBytes(request, 100 * 1024 * 1024)).buffer,
+						(
+							await readBoundedRequestBytes(
+								request,
+								MAX_AUTOMATION_ARTIFACT_BYTES,
+							)
+						).buffer,
 						request.headers.get("x-gmshop-signature") ?? "",
 					);
 					return Response.json(result, {

@@ -166,6 +166,36 @@ export async function processAutomationCallback(
 	return { id: job.id, status: nextStatus, duplicate: false };
 }
 
+export const MAX_AUTOMATION_ARTIFACT_BYTES = 100 * 1024 * 1024;
+
+// Runs before the body is read: the signature covers the body checksum, so
+// without this anyone could make us buffer 100 MiB for a job that cannot
+// accept artifacts. Retries of an existing artifact pass through so the
+// verified upload path can still answer them idempotently.
+export async function preflightAutomationArtifactUpload(
+	db: D1Database,
+	rawInput: { jobId: string; artifactId: string },
+	contentLength: string | null,
+) {
+	const input = artifactSchema
+		.pick({ jobId: true, artifactId: true })
+		.parse(rawInput);
+	if (
+		contentLength !== null &&
+		(!/^\d{1,12}$/.test(contentLength) ||
+			Number(contentLength) > MAX_AUTOMATION_ARTIFACT_BYTES)
+	)
+		throw new DomainError("request_too_large", 413, "Artifact is too large");
+	const job = await loadCallbackJob(db, input.jobId);
+	if (job.status === "running" && job.artifact_policy !== "none") return;
+	if (await loadArtifactUpload(db, job.id, input.artifactId)) return;
+	throw new DomainError(
+		"automation_artifact_not_accepted",
+		409,
+		"Build is not accepting artifacts",
+	);
+}
+
 export async function uploadAutomationArtifact(
 	db: D1Database,
 	bucket: {
@@ -182,7 +212,7 @@ export async function uploadAutomationArtifact(
 	now = Date.now(),
 ) {
 	const input = artifactSchema.parse(rawInput);
-	if (body.byteLength < 1 || body.byteLength > 100 * 1024 * 1024)
+	if (body.byteLength < 1 || body.byteLength > MAX_AUTOMATION_ARTIFACT_BYTES)
 		throw new DomainError(
 			"automation_artifact_size_invalid",
 			400,

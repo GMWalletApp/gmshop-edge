@@ -13,16 +13,22 @@ export function publicTurnstileConfig(config: TurnstileConfig) {
 	};
 }
 
+// Every endpoint that makes us send an email to an arbitrary address. Chosen by
+// path alone: a client-controlled header must never switch the challenge off.
+const emailSendingPaths = new Set([
+	"/api/auth/sign-up/email",
+	"/api/auth/email-otp/send-verification-otp",
+	"/api/auth/email-otp/request-password-reset",
+	"/api/auth/forget-password",
+	"/api/auth/request-password-reset",
+	"/api/auth/send-verification-email",
+]);
+
 // Exact interactive entry points only: never challenge payment or OAuth callbacks.
 export function turnstileAction(request: Request): string | null {
 	if (request.method !== "POST") return null;
 	const path = new URL(request.url).pathname.replace(/\/$/, "");
-	if (
-		path === "/api/auth/sign-up/email" ||
-		(path === "/api/auth/email-otp/send-verification-otp" &&
-			request.headers.has("x-agent-access-item"))
-	)
-		return "register";
+	if (emailSendingPaths.has(path)) return "register";
 	if (path === "/api/support/web/conversations") return "support";
 	return null;
 }

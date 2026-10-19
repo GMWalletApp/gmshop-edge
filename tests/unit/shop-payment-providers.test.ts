@@ -392,6 +392,50 @@ describe("shop payment providers", () => {
 		).rejects.toMatchObject({ code: "invalid_payment_signature" });
 	});
 
+	it("treats a completed but unpaid Stripe session as pending", async () => {
+		const timestamp = 1_700_000_000;
+		const webhookSecret = "whsec_test-secret";
+		const parse = async (type: string, paymentStatus: string) => {
+			const body = JSON.stringify({
+				id: `evt_${type}_${paymentStatus}`,
+				type,
+				data: {
+					object: {
+						id: "cs_test",
+						amount_total: 1000,
+						currency: "usd",
+						payment_status: paymentStatus,
+					},
+				},
+			});
+			const signature = await hmacSha256Hex(
+				webhookSecret,
+				`${timestamp}.${body}`,
+			);
+			return stripePaymentProvider.parseWebhook(
+				new Request("https://shop.test/webhook", {
+					method: "POST",
+					headers: { "stripe-signature": `t=${timestamp},v1=${signature}` },
+					body,
+				}),
+				{ secretKey: "sk_test_key", webhookSecret },
+				timestamp * 1000,
+			);
+		};
+		await expect(
+			parse("checkout.session.completed", "unpaid"),
+		).resolves.toMatchObject({ type: "payment_pending" });
+		await expect(
+			parse("checkout.session.completed", "paid"),
+		).resolves.toMatchObject({ type: "payment_succeeded" });
+		await expect(
+			parse("checkout.session.completed", "no_payment_required"),
+		).resolves.toMatchObject({ type: "payment_succeeded" });
+		await expect(
+			parse("checkout.session.async_payment_succeeded", "paid"),
+		).resolves.toMatchObject({ type: "payment_succeeded" });
+	});
+
 	it("rejects a chunked oversized payment callback before signature work", async () => {
 		const request = new Request("https://shop.test/webhook", {
 			method: "POST",

@@ -18,6 +18,7 @@ describe("access and user Server Function error presentation", () => {
 		["built_in_role", m.access_error_built_in_role()],
 		["role_in_use", m.access_error_role_in_use()],
 		["invalid_input", m.access_error_invalid_input()],
+		["permission_escalation", m.access_error_permission_escalation()],
 	] as const)("maps reviewed access code %s", (code, message) => {
 		expect(
 			accessOperationErrorMessage(new ServerFunctionError(code, 409, code)),
@@ -35,6 +36,8 @@ describe("access and user Server Function error presentation", () => {
 		["root_role_required", m.admin_users_error_root_role_required()],
 		["role_unavailable", m.admin_users_error_role_unavailable()],
 		["own_roles_required", m.admin_users_error_own_roles_required()],
+		["cannot_change_own_roles", m.admin_users_error_cannot_change_own_roles()],
+		["permission_escalation", m.admin_users_error_permission_escalation()],
 		["user_id_required", m.admin_users_error_invalid_input()],
 		["invalid_input", m.admin_users_error_invalid_input()],
 	] as const)("maps reviewed user code %s", (code, message) => {

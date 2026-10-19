@@ -24,6 +24,7 @@ import {
 } from "#/features/redeem-warehouse/server/sale-capacity";
 import { multiStoreOrderSchema } from "#/features/storefront/schema";
 import { DomainError } from "#/lib/domain-error";
+import { claimFixedWindowRateLimit } from "#/server/rate-limit";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 import { encryptOrderInput } from "./order-input-secrets";
 import {
@@ -99,6 +100,7 @@ export async function createMultiStoreOrder(
 		userId?: string;
 		identityEmail?: string;
 		pricingChannelId?: string;
+		clientIp?: string | null;
 	} = {},
 ) {
 	const input = multiStoreOrderSchema.parse(rawInput);
@@ -148,6 +150,8 @@ export async function createMultiStoreOrder(
 			duplicate: true,
 		};
 	}
+	// Only new orders reach this point, so idempotent replays never count.
+	await claimNewOrderBudget(db, access.clientIp, normalizedContactEmail);
 
 	const policy = await loadOrderPolicy(db);
 	if (!access.userId && !policy.allowGuestCheckout)
@@ -855,6 +859,43 @@ export async function previewStoreCoupon(
 	return priceStoreCoupon(db, coupon, lines);
 }
 
+// Public checkout quote. Budgeted per IP, and every coupon rejection looks the
+// same so the endpoint cannot be used to probe which codes exist.
+export async function quoteStoreCouponForVisitor(
+	db: D1Database,
+	clientIp: string | null | undefined,
+	code: string,
+	items: readonly { id: string; quantity: number }[],
+	owner: { userId?: string; normalizedEmail: string | null },
+	channelId?: string,
+) {
+	const ip = clientIp?.trim().slice(0, 45);
+	if (ip) {
+		const budget = await claimFixedWindowRateLimit(db, {
+			bucketKey: `checkout:coupon-quote:ip:${ip}`,
+			limit: 120,
+			windowMs: 600_000,
+		});
+		if (!budget.allowed)
+			throw new DomainError(
+				"coupon_quote_rate_limited",
+				429,
+				"Too many coupon checks. Please try again later.",
+			);
+	}
+	try {
+		return await previewStoreCoupon(db, code, items, owner, channelId);
+	} catch (error) {
+		if (
+			error instanceof DomainError &&
+			(error.code.startsWith("coupon_") ||
+				error.code === "contact_email_required")
+		)
+			throw new DomainError("coupon_unavailable", 409, "Coupon is unavailable");
+		throw error;
+	}
+}
+
 async function priceStoreCoupon(
 	db: D1Database,
 	coupon: CouponRow | null,
@@ -1160,4 +1201,48 @@ function createOrderNumber() {
 
 function minBigInt(left: bigint, right: bigint) {
 	return left < right ? left : right;
+}
+
+const ORDER_IP_LIMIT = 20;
+const ORDER_IP_WINDOW_MS = 600_000;
+const UNPAID_ORDERS_PER_EMAIL = 5;
+
+async function claimNewOrderBudget(
+	db: D1Database,
+	clientIp: string | null | undefined,
+	normalizedEmail: string | null | undefined,
+) {
+	const now = Date.now();
+	if (normalizedEmail) {
+		const unpaid = await db
+			.prepare(
+				`SELECT COUNT(*) AS count FROM shop_orders
+				 WHERE normalized_contact_email = ? AND status = 'pending_payment'
+				 AND expires_at > ?`,
+			)
+			.bind(normalizedEmail, now)
+			.first<{ count: number }>();
+		if ((unpaid?.count ?? 0) >= UNPAID_ORDERS_PER_EMAIL)
+			throw new DomainError(
+				"too_many_unpaid_orders",
+				429,
+				"Pay or cancel your existing unpaid orders first",
+			);
+	}
+	// Without a trusted peer address (e.g. a bare Bun deployment) a shared
+	// "unknown" bucket would throttle every buyer at once, so skip it.
+	const ip = clientIp?.trim().slice(0, 45);
+	if (!ip) return;
+	const budget = await claimFixedWindowRateLimit(db, {
+		bucketKey: `checkout:order:ip:${ip}`,
+		limit: ORDER_IP_LIMIT,
+		windowMs: ORDER_IP_WINDOW_MS,
+		now,
+	});
+	if (!budget.allowed)
+		throw new DomainError(
+			"order_rate_limited",
+			429,
+			"Too many orders. Please try again later.",
+		);
 }

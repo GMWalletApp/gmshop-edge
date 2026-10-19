@@ -8,6 +8,7 @@ export async function createStoreOrder(
 		userId?: string;
 		identityEmail?: string;
 		pricingChannelId?: string;
+		clientIp?: string | null;
 	} = {},
 ) {
 	return createMultiStoreOrder(

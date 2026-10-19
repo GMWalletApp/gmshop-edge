@@ -85,11 +85,33 @@ describe("realtime inventory events", { timeout: 30_000 }, () => {
 						"supplier-api-key",
 					),
 				),
+			// Sorted first: a redirecting partner must not block the next one.
+			db
+				.prepare(
+					`INSERT INTO supplier_api_keys
+					 (id, user_id, name, key_id, secret_encrypted, secret_revision,
+					  allowed_callback_origin, created_at, updated_at)
+					 VALUES ('key-0', 'user-1', 'Broken', 'gme_broken', ?, 1,
+					  'https://broken.example', 1, 1)`,
+				)
+				.bind(
+					await encryptSecret(
+						apiSecret,
+						runtime.commerceSecret,
+						"supplier-api-key",
+					),
+				),
 		]);
 		const fetcher = vi.fn(
 			async (input: string | URL | Request, init?: RequestInit) => {
 				const headers = new Headers(init?.headers);
 				const rawBody = String(init?.body ?? "");
+				expect(init?.redirect).toBe("manual");
+				if (String(input).startsWith("https://broken.example"))
+					return new Response(null, {
+						status: 302,
+						headers: { location: "http://169.254.169.254/" },
+					});
 				expect(String(input)).toBe(
 					"https://lsrai.example/api/v1/upstream/callback",
 				);
@@ -111,7 +133,8 @@ describe("realtime inventory events", { timeout: 30_000 }, () => {
 				fetcher: fetcher as typeof fetch,
 				now: () => 300_000,
 			}),
-		).resolves.toEqual({ delivered: 1 });
+		).resolves.toEqual({ delivered: 1, failed: 1 });
+		expect(fetcher).toHaveBeenCalledTimes(2);
 	});
 });
 

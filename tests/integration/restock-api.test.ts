@@ -77,6 +77,31 @@ describe("restock API", () => {
 		});
 	});
 
+	it("rate limits wrong tokens per IP before any valid request is served", async () => {
+		const attempt = (authorization: string) =>
+			handleRestockApiRequest(
+				new Request(
+					`https://shop.example/api/ops/restock?componentId=${componentId}`,
+					{
+						headers: {
+							authorization,
+							"cf-connecting-ip": "198.51.100.80",
+						},
+					},
+				),
+				{ DB: db, RESTOCK_API_TOKEN: token },
+			);
+		for (let index = 0; index < 10; index++)
+			expect((await attempt(`Bearer wrong-${index}`)).status).toBe(401);
+		const limited = await attempt("Bearer wrong-final");
+		expect(limited.status).toBe(429);
+		expect(await limited.json()).toEqual({
+			ok: false,
+			error: "restock_rate_limited",
+		});
+		expect((await attempt(`Bearer ${token}`)).status).toBe(200);
+	});
+
 	it("imports one supplier-backed CDK with its recharge URL and is idempotent", async () => {
 		const first = await request("POST", payload());
 		expect(first.status).toBe(200);
