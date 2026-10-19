@@ -583,7 +583,9 @@ export function StorefrontCheckoutPage() {
 				</p>
 			</div>
 			{items.some((item) => item.productId === claudeRechargeProductId) ? (
-				<ClaudePurchaseGuide />
+				<div className="my-10 grid gap-10">
+					<ClaudePurchaseGuide />
+				</div>
 			) : null}
 			<form
 				className="grid overflow-hidden rounded-3xl border bg-card shadow-sm lg:grid-cols-2"

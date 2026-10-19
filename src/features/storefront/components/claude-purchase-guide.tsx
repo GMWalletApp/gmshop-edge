@@ -18,7 +18,7 @@ export function ClaudePurchaseGuide() {
 				id="claude-ip-check"
 				aria-labelledby="claude-ip-check-title"
 				data-claude-ip-check
-				className="my-10 scroll-mt-24 space-y-3 rounded-2xl border border-primary/30 bg-primary/5 p-5 sm:p-8"
+				className="scroll-mt-24 space-y-3 rounded-2xl border border-primary/30 bg-primary/5 p-5"
 			>
 				<h2
 					id="claude-ip-check-title"
@@ -55,7 +55,7 @@ export function ClaudePurchaseGuide() {
 			<section
 				id="claude-purchase-guide"
 				aria-labelledby="claude-purchase-guide-title"
-				className="my-10 scroll-mt-24 space-y-6 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 sm:p-8"
+				className="scroll-mt-24 space-y-6 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5"
 			>
 				<header className="space-y-2">
 					<h2

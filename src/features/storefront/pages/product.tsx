@@ -190,6 +190,11 @@ export function StorefrontProductPage({
 		? purchaseLimitSummary(selectedItem)
 		: null;
 	const planGroups = groupPlans(data.sellableItems);
+	// Long copy reads better beside the gallery than above the plan picker.
+	const longDescription =
+		data.id !== claudeRechargeProductId &&
+		Boolean(data.description) &&
+		((data.description?.length ?? 0) > 90 || data.description?.includes("\n"));
 	const showPurchaseOptions =
 		Boolean(preferredItemId) ||
 		data.sellableItems.length > 1 ||
@@ -207,8 +212,9 @@ export function StorefrontProductPage({
 				<ArrowLeft className="size-4" />
 				{m.store_continue_shopping()}
 			</Link>
-			<div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(420px,7fr)] lg:gap-12">
-				<div className="grid content-start gap-3">
+			{/* Mobile reads gallery → purchase → details; desktop keeps purchase in the right column beside both. */}
+			<div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(420px,7fr)] lg:grid-rows-[auto_1fr] lg:gap-x-12 lg:gap-y-3">
+				<div className="grid content-start gap-3 lg:col-start-1 lg:row-start-1">
 					<div className="relative aspect-video overflow-hidden rounded-2xl bg-muted">
 						{selectedMedia ? (
 							<img
@@ -277,17 +283,8 @@ export function StorefrontProductPage({
 							))}
 						</div>
 					) : null}
-					{selectedItem &&
-					data.productType === "stock" &&
-					!ownUsageGuideProductIds.has(data.id) ? (
-						<UsageGuide
-							isChatGpt={data.id === chatGptRechargeProductId}
-							sellableItem={selectedItem}
-						/>
-					) : null}
-					{data.id === chatGptRechargeProductId ? <ChatGptRegionGuide /> : null}
 				</div>
-				<div className="min-w-0 lg:sticky lg:top-26 lg:h-fit">
+				<div className="min-w-0 lg:sticky lg:top-26 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
 					<div className="flex flex-wrap gap-2">
 						{data.tags.map((tag) => (
 							<Badge asChild key={tag} variant="secondary">
@@ -313,7 +310,7 @@ export function StorefrontProductPage({
 					) : null}
 					{data.description && data.id === claudeRechargeProductId ? (
 						<ClaudeProductDescription description={data.description} />
-					) : data.description ? (
+					) : data.description && !longDescription ? (
 						<p className="mt-4 max-w-2xl whitespace-pre-wrap text-muted-foreground leading-7">
 							{data.description}
 						</p>
@@ -643,8 +640,29 @@ export function StorefrontProductPage({
 						</div>
 					</div>
 				</div>
+				<div className="grid min-w-0 content-start gap-3 lg:col-start-1 lg:row-start-2">
+					{longDescription ? (
+						<section className="rounded-2xl border border-border/70 bg-card/55 p-5 shadow-sm">
+							<h2 className="font-semibold text-primary text-xs uppercase tracking-[0.16em]">
+								{m.store_product_intro()}
+							</h2>
+							<p className="mt-3 whitespace-pre-wrap text-muted-foreground text-sm leading-7">
+								{data.description}
+							</p>
+						</section>
+					) : null}
+					{selectedItem &&
+					data.productType === "stock" &&
+					!ownUsageGuideProductIds.has(data.id) ? (
+						<UsageGuide
+							isChatGpt={data.id === chatGptRechargeProductId}
+							sellableItem={selectedItem}
+						/>
+					) : null}
+					{data.id === chatGptRechargeProductId ? <ChatGptRegionGuide /> : null}
+					{data.id === claudeRechargeProductId ? <ClaudePurchaseGuide /> : null}
+				</div>
 			</div>
-			{data.id === claudeRechargeProductId ? <ClaudePurchaseGuide /> : null}
 			{relatedProducts.isLoading ? (
 				<RelatedProductsLoadingSkeleton />
 			) : recommendations.length ? (
