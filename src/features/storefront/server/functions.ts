@@ -59,6 +59,7 @@ export const createStoreOrderFn = createServerFn({ method: "POST" })
 		return createStoreOrder(db, input, {
 			userId: account?.user.id,
 			identityEmail: account?.user.email,
+			clientIp: request.headers.get("cf-connecting-ip"),
 		});
 	});
 
@@ -236,6 +237,7 @@ export const checkoutStoreOrderFn = createServerFn({ method: "POST" })
 		const order = await createStoreOrder(db, input, {
 			userId: account?.user.id,
 			identityEmail: account?.user.email,
+			clientIp: request.headers.get("cf-connecting-ip"),
 			pricingChannelId:
 				data.walletPayment || !data.paymentChannelId
 					? undefined

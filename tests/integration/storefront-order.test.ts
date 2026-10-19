@@ -34,7 +34,11 @@ async function createStoreOrder(
 		customerNote: string;
 		inputValues?: Record<string, unknown>;
 	},
-	access: { userId?: string; pricingChannelId?: string } = {},
+	access: {
+		userId?: string;
+		pricingChannelId?: string;
+		clientIp?: string;
+	} = {},
 ) {
 	const { sellableItemId, quantity, inputValues = {}, ...checkout } = input;
 	return createMultiStoreOrder(
@@ -335,6 +339,51 @@ describe("storefront order creation", { timeout: 30_000 }, () => {
 			status: "pending_payment",
 			totalMinor: "2000",
 		});
+	});
+
+	it("caps unpaid orders per email and new orders per IP without counting replays", async () => {
+		await database
+			.prepare(
+				"UPDATE product_sellable_items SET fulfillment_source = 'manual', supplier_status = NULL WHERE id = ?",
+			)
+			.bind(sellableItemId)
+			.run();
+		const order = (email: string, idempotencyKey: string, clientIp: string) =>
+			createStoreOrder(
+				database,
+				{
+					sellableItemId,
+					quantity: 1,
+					email,
+					idempotencyKey,
+					customerNote: "",
+				},
+				{ clientIp },
+			);
+		for (let index = 0; index < 5; index++)
+			await order("busy@example.com", `unpaid-${index}`, "198.51.100.1");
+		await expect(
+			order("busy@example.com", "unpaid-5", "198.51.100.1"),
+		).rejects.toMatchObject({ code: "too_many_unpaid_orders", status: 429 });
+		await expect(
+			order("busy@example.com", "unpaid-0", "198.51.100.1"),
+		).resolves.toMatchObject({ duplicate: true });
+
+		for (let index = 0; index < 20; index++)
+			await order(
+				`ip-${index}@example.com`,
+				`ip-order-${index}`,
+				"198.51.100.2",
+			);
+		await expect(
+			order("ip-0@example.com", "ip-order-0", "198.51.100.2"),
+		).resolves.toMatchObject({ duplicate: true });
+		await expect(
+			order("ip-20@example.com", "ip-order-20", "198.51.100.2"),
+		).rejects.toMatchObject({ code: "order_rate_limited", status: 429 });
+		await expect(
+			order("ip-20@example.com", "ip-order-20", "198.51.100.3"),
+		).resolves.toMatchObject({ duplicate: false });
 	});
 
 	it("snapshots fixed-term policy without a redundant billing enum", async () => {
