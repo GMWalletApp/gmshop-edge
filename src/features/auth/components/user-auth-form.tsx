@@ -11,6 +11,7 @@ import { Button } from "#/components/ui/button";
 import { Label } from "#/components/ui/label";
 import { authClient } from "#/features/auth/auth-client";
 import { useAuthAnimation } from "#/features/auth/components/auth-animation-context";
+import { useTurnstile } from "#/features/auth/components/turnstile";
 import { signInErrorMessage } from "#/features/auth/error-message";
 import { listPublicAuthProvidersFn } from "#/features/auth/server/provider-admin";
 import { cn } from "#/lib/utils";
@@ -38,6 +39,7 @@ export function UserAuthForm({
 	);
 	const [emailValue, setEmailValue] = useState("");
 	const [sentEmail, setSentEmail] = useState<string | null>(null);
+	const challenge = useTurnstile("register");
 	const emailProvider = providers.data?.find(
 		(provider) => provider.providerType === "email",
 	);
@@ -286,6 +288,7 @@ export function UserAuthForm({
 												</Button>
 											) : null}
 										</div>
+										{challenge.widget}
 										<Captcha
 											autoComplete="one-time-code"
 											disabled={!z.email().safeParse(emailValue.trim()).success}
@@ -391,10 +394,16 @@ export function UserAuthForm({
 			toast.error(m.auth_email_required());
 			return false;
 		}
-		const result = await authClient.emailOtp.sendVerificationOtp({
-			email,
-			type: "sign-in",
-		});
+		if (!challenge.ready) {
+			toast.error(m.auth_human_verification_required());
+			return false;
+		}
+		const result = await authClient.emailOtp.sendVerificationOtp(
+			{ email, type: "sign-in" },
+			{ headers: challenge.headers },
+		);
+		// Turnstile tokens are single-use; a resend needs a fresh challenge.
+		challenge.reset();
 		if (result.error) {
 			toast.error(signInErrorMessage(result.error));
 			return false;

@@ -1997,6 +1997,7 @@
 	"ip_article_score_title": "分数是怎么算出来的？",
 	"auth_error_rate_limited": "操作过于频繁，请稍后再试；注册次数过多时需等待一小时。",
 	"auth_human_verification_failed": "人机验证暂不可用，请刷新后重试。",
+	"auth_human_verification_required": "请先完成人机验证。",
 	"auth_error_undeliverable_email": "请填写能够接收邮件的真实邮箱",
 	"notifications_status_accepted": "服务商已接受（待确认送达）",
 	"notifications_status_bounced": "投递失败（不自动重发）",

@@ -7,24 +7,27 @@ import { toast } from "sonner";
 import { Button } from "#/components/ui/button";
 import { useSiteBrand } from "#/context/site-brand-provider";
 import { authClient } from "#/features/auth/auth-client";
+import { useTurnstile } from "#/features/auth/components/turnstile";
 import { m } from "#/paraglide/messages";
 
 export function VerifyEmailSentPage() {
 	const brand = useSiteBrand();
 	const [email, setEmail] = useState("");
 	const [pending, setPending] = useState(false);
+	const challenge = useTurnstile("register");
 	useEffect(() => {
 		setEmail(
 			window.sessionStorage.getItem("gmshop.pending_verification_email") ?? "",
 		);
 	}, []);
 	async function resend() {
-		if (!email) return;
+		if (!email || !challenge.ready) return;
 		setPending(true);
-		const result = await authClient.sendVerificationEmail({
-			email,
-			callbackURL: "/account",
-		});
+		const result = await authClient.sendVerificationEmail(
+			{ email, callbackURL: "/account" },
+			{ headers: challenge.headers },
+		);
+		challenge.reset();
 		setPending(false);
 		if (result.error) return toast.error(m.auth_verification_resend_failed());
 		toast.success(m.auth_verification_resent());
@@ -42,13 +45,16 @@ export function VerifyEmailSentPage() {
 				</p>
 			</div>
 			{email ? (
-				<Button
-					disabled={pending}
-					onClick={() => void resend()}
-					variant="outline"
-				>
-					{m.auth_verification_resend()}
-				</Button>
+				<>
+					{challenge.widget}
+					<Button
+						disabled={pending || !challenge.ready}
+						onClick={() => void resend()}
+						variant="outline"
+					>
+						{m.auth_verification_resend()}
+					</Button>
+				</>
 			) : null}
 			<Button asChild variant="link">
 				<Link search={{ redirect: undefined }} to="/sign-in">

@@ -1997,6 +1997,7 @@
 	"ip_article_score_title": "How is the score calculated?",
 	"auth_error_rate_limited": "Too many attempts. Try again later; registration limits may take an hour to reset.",
 	"auth_human_verification_failed": "Human verification is unavailable. Please reload and try again.",
+	"auth_human_verification_required": "Complete the human verification first.",
 	"auth_error_undeliverable_email": "Enter an email address that can receive mail",
 	"notifications_status_accepted": "Provider accepted (delivery unconfirmed)",
 	"notifications_status_bounced": "Delivery failed (no automatic resend)",

@@ -68,6 +68,35 @@ describe("durable authentication abuse protection", () => {
 			),
 		).resolves.toBeUndefined();
 	});
+	it("caps outbound mail to one recipient at ten per day", async () => {
+		const day = 86_400_000 * 100;
+		for (let i = 0; i < 10; i++)
+			await enforceDurableAuthRateLimit(
+				db,
+				"/email-otp/request-password-reset",
+				headers(`198.51.120.${i}`),
+				{ email: "daily@customer.com" },
+				day + i * 600_000,
+			);
+		await expect(
+			enforceDurableAuthRateLimit(
+				db,
+				"/email-otp/request-password-reset",
+				headers("198.51.120.99"),
+				{ email: "daily@customer.com" },
+				day + 10 * 600_000,
+			),
+		).rejects.toMatchObject({ status: "TOO_MANY_REQUESTS" });
+		await expect(
+			enforceDurableAuthRateLimit(
+				db,
+				"/email-otp/request-password-reset",
+				headers("198.51.120.99"),
+				{ email: "daily@customer.com" },
+				day + 86_400_000,
+			),
+		).resolves.toBeUndefined();
+	});
 	it("does not charge code consumption against the outbound mail budget", async () => {
 		for (let i = 0; i < 3; i++)
 			await enforceDurableAuthRateLimit(

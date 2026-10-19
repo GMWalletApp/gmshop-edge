@@ -33,7 +33,7 @@ const request = (path = "/api/auth/sign-up/email", token = "test-token") =>
 	});
 afterEach(() => vi.unstubAllGlobals());
 describe("Turnstile exact entry point enforcement", () => {
-	it("only guards registration and new support conversations", () => {
+	it("only guards email-sending entry points and new support conversations", () => {
 		expect(turnstileAction(request())).toBe("register");
 		expect(turnstileAction(request("/api/auth/sign-in/email/"))).toBeNull();
 		expect(turnstileAction(request("/api/support/web/conversations"))).toBe(
@@ -54,15 +54,20 @@ describe("Turnstile exact entry point enforcement", () => {
 			),
 		).toBeNull();
 	});
-	it("guards the purchase OTP send but leaves ordinary sign-in and payment callbacks unchanged", async () => {
-		const r = request("/api/auth/email-otp/send-verification-otp", "");
-		expect(turnstileAction(r)).toBeNull();
-		r.headers.set(
-			"x-agent-access-item",
-			"09900000-0000-4000-8000-000000000002",
-		);
-		expect(turnstileAction(r)).toBe("register");
-		expect((await verify(r, config))?.status).toBe(403);
+	it("guards every email-sending path by path alone, not by a client header", async () => {
+		for (const path of [
+			"/api/auth/email-otp/send-verification-otp",
+			"/api/auth/email-otp/request-password-reset",
+			"/api/auth/forget-password",
+			"/api/auth/request-password-reset",
+			"/api/auth/send-verification-email/",
+		]) {
+			const r = request(path, "");
+			expect(turnstileAction(r)).toBe("register");
+			expect((await verify(r, config))?.status).toBe(403);
+			// Without configuration the site keeps working unchallenged.
+			expect(await verify(r, {})).toBeNull();
+		}
 	});
 	it("is explicitly optional with no configuration and never exposes the secret", async () => {
 		expect(await verify(request(), {})).toBeNull();
