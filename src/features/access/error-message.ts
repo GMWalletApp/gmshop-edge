@@ -12,6 +12,8 @@ export function accessOperationErrorMessage(error: unknown) {
 			return m.access_error_role_in_use();
 		case "invalid_input":
 			return m.access_error_invalid_input();
+		case "permission_escalation":
+			return m.access_error_permission_escalation();
 		default:
 			return m.access_operation_failed();
 	}

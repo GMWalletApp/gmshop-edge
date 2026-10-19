@@ -288,6 +288,17 @@ describe("root user protection", () => {
 		expect(assignments?.count).toBe(2);
 	});
 
+	it("refuses to let any operator change the roles of their own account", async () => {
+		for (const userId of ["member-a", "root-b"])
+			await expect(
+				replaceUserRolesAtomically(database, {
+					userId,
+					roleIds: [rootRoleId],
+					currentUserId: userId,
+				}),
+			).rejects.toMatchObject({ code: "cannot_change_own_roles", status: 409 });
+	});
+
 	it("allows an enabled root to assign the root role", async () => {
 		await expect(
 			replaceUserRolesAtomically(database, {

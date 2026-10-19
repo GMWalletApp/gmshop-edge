@@ -10,11 +10,11 @@ export async function replaceUserRolesAtomically(
 		currentUserId: string;
 	},
 ) {
-	if (input.userId === input.currentUserId && input.roleIds.length === 0)
+	if (input.userId === input.currentUserId)
 		throw new DomainError(
-			"own_roles_required",
+			"cannot_change_own_roles",
 			409,
-			"You cannot remove all of your own roles",
+			"You cannot change the roles of your own account",
 		);
 	const roleIds = normalizeRoleIds(input.roleIds);
 	let nextIncludesRoot = false;

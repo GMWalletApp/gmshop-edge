@@ -1,6 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { normalizeRoleIds } from "#/features/access/rbac-json";
+import { assertGrantsWithinActor } from "#/features/access/permissions";
+import {
+	normalizeRoleIds,
+	permissionsJsonSchema,
+} from "#/features/access/rbac-json";
+import { getAdminPermissions } from "#/features/access/server/require-admin";
 import { systemPermission } from "#/features/access/system-rbac";
 import { userIdSchema } from "#/features/users/schema";
 import { replaceUserRolesAtomically } from "#/features/users/server/role-assignments";
@@ -113,19 +118,28 @@ export const setUserRolesFn = createServerFn({ method: "POST" })
 		const roles = data.roleIds.length
 			? await db.$client
 					.prepare(
-						`SELECT id FROM roles WHERE enabled = 1
+						`SELECT id, permissions_json FROM roles WHERE enabled = 1
 						 AND name NOT IN ('customer', 'guest')
 						 AND id IN (${data.roleIds.map(() => "?").join(",")})`,
 					)
 					.bind(...data.roleIds)
-					.all<{ id: string }>()
-			: { results: [] as Array<{ id: string }> };
+					.all<{ id: string; permissions_json: string }>()
+			: { results: [] as Array<{ id: string; permissions_json: string }> };
 		if (roles.results.length !== data.roleIds.length)
 			throw new DomainError(
 				"role_unavailable",
 				409,
 				"Unknown or disabled role",
 			);
+		// The root role itself is guarded by replaceUserRolesAtomically.
+		assertGrantsWithinActor(
+			await getAdminPermissions(request),
+			roles.results.flatMap((role) =>
+				Object.entries(
+					permissionsJsonSchema.parse(JSON.parse(role.permissions_json)),
+				).map(([module, permissionMask]) => ({ module, permissionMask })),
+			),
+		);
 		const result = await replaceUserRolesAtomically(db.$client, {
 			userId: data.userId,
 			roleIds: data.roleIds,
