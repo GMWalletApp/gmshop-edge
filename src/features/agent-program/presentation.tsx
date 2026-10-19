@@ -1,7 +1,12 @@
 import { Button } from "#/components/ui/button";
-import { amountMinor } from "#/features/agent-program/schema";
-import { formatMinorAmount, formatMinorAmountWithSymbol } from "#/lib/format";
+import { type Agent, amountMinor } from "#/features/agent-program/schema";
+import {
+	formatMinorAmount,
+	formatMinorAmountWithSymbol,
+	formatNumber,
+} from "#/lib/format";
 import { m } from "#/paraglide/messages";
+import { getLocale } from "#/paraglide/runtime";
 
 export function money(value: string | bigint, currency = "CNY") {
 	if (!/^[A-Z]{3}$/.test(currency))
@@ -23,6 +28,10 @@ export function statusLabel(status: string) {
 		case "disabled":
 		case "revoked":
 			return m.agent_program_status_disabled();
+		case "pending_review":
+			return m.agent_program_domain_pending_review();
+		case "provisioning":
+			return m.agent_program_domain_provisioning();
 		case "pending_approval":
 		case "pending":
 			return m.agent_program_status_pending();
@@ -66,4 +75,70 @@ export function tierGuardLabel(
 		default:
 			return m.agent_program_reached();
 	}
+}
+
+export function AgentDomains({ domains }: { domains: Agent["domains"] }) {
+	return domains.length ? (
+		<ul className="space-y-1 text-xs text-muted-foreground">
+			{domains.map((domain) => (
+				<li key={domain.domain} className="break-all">
+					{domain.domain} ·{" "}
+					{domain.type === "subdomain"
+						? m.agent_program_subdomain()
+						: domain.type === "custom"
+							? m.agent_program_custom_domain()
+							: domain.type}
+					{domain.status && <> · {statusLabel(domain.status)}</>}
+				</li>
+			))}
+		</ul>
+	) : (
+		<span>—</span>
+	);
+}
+export function PeriodProfit({
+	value,
+	currency,
+}: {
+	value: Agent["our_profit_month"];
+	currency: string;
+}) {
+	return (
+		<div>
+			{value.profit === null
+				? m.agent_program_profit_fetch_unavailable()
+				: money(value.profit, currency)}
+			{value.profit !== null && value.unknown_order_count > 0 && (
+				<p className="text-xs text-muted-foreground">
+					{m.agent_program_period_cost_unknown({
+						count: formatNumber(value.unknown_order_count),
+					})}
+				</p>
+			)}
+		</div>
+	);
+}
+
+export function PanelDataAge({
+	updatedAt,
+	month,
+}: {
+	updatedAt: number | undefined;
+	month?: string;
+}) {
+	const time =
+		updatedAt && Number.isFinite(updatedAt)
+			? new Intl.DateTimeFormat(getLocale(), {
+					timeZone: "Asia/Shanghai",
+					hour: "2-digit",
+					minute: "2-digit",
+					hour12: false,
+				}).format(updatedAt)
+			: undefined;
+	return (
+		<span className="text-muted-foreground text-sm">
+			{month && <>{m.agent_program_displayed_month({ month })} · </>}
+			{time && m.agent_program_updated_at({ time })}
+		</span>
+	);
 }

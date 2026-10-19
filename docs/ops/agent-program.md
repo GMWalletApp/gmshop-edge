@@ -4,8 +4,9 @@
 `operations:read` permission. Mutations also require `operations:update`.
 The page displays agent accounting, fee-based rebates, owner-reviewed leaderboard
 rewards and pending withdrawals from the same agent-shop rules API as the agent
-center. The private owner API displays our actual profit in the rebate window,
-never agent retail margin, and explains every tier waiting for profit coverage.
+center. The table shows our true profit for the selected sales month, not the
+rebate window or agent retail margin. The rebate section keeps its separate
+window profit and explains every tier waiting for profit coverage.
 
 ## Server-only binding
 
@@ -101,3 +102,53 @@ Tests use local migrated D1, SQLite, synthetic HTTP and fake mailers only.
 No production data, true unmapped-order inventory, live email or online cross-site
 verification was read/performed. No GMShop schema migration is added; agent-shop
 adds a small daily-warning claim table through its existing AutoMigrate.
+
+
+## Owner-panel details
+
+Only the internal owner API and root/admin panel show full agent email and Alipay
+accounts. Agent-facing APIs are unchanged. Sites show every bound domain, its
+subdomain/custom type and status, both below the table label and in detail.
+
+`our_profit_month` and `our_profit_last_month` use the selected month and previous
+month in Beijing time, with exactly the sales paid-parent/snapshot cohort,
+including undelivered and fully refunded orders, excluding main-site self-purchases.
+Profit is platform revenue minus refunded revenue minus the full incurred cost;
+unknown costs/mappings count as full net-revenue loss with the affected order count.
+The cost API is shared/deduplicated across agents, periods and rebate windows,
+with at most 500 orders per request. API failures display Temporarily unavailable,
+not zero. No all-time cost scan was added; detail shows this and last month only.
+`our_profit_in_window` remains separate in the rebate section; credit guards are unchanged.
+
+Pending payouts show full account, agent label/email and Beijing request date/time.
+Multiple requests of the same agent may be recorded with the same Alipay transfer
+ID, one request at a time. Existing mutation locks, session-derived operator and
+audit/idempotency behavior remain; this never transfers money.
+
+Deploying these PRs requires the companion agent-shop owner-panel API contract
+(`email`, `payout_alipay_account`, structured `domains`, period profits,
+withdrawal `account/email`). No deployment, live production read, transfer or
+notification was performed as part of this follow-up.
+
+## Owner read freshness
+
+Independent agents, leaderboard, pending-withdrawal and rules queries start in
+parallel; SSR prefetch waits only for agents. Tab contents mount on demand.
+Previous results remain visible during refetch, with their actual displayed month,
+Beijing snapshot time and an Updating indicator. Refresh bypasses the Worker cache.
+Client query data is fresh for 60 seconds and retained in memory for 30 minutes.
+
+Owner/admin authorization still runs before every server read. Agents, details,
+leaderboard and rules use the existing KV/runtime cache for at most 60 seconds;
+withdrawals and mutation responses are not cached. Keys include endpoint, query,
+credential scope and an authoritative D1 revision. Fee edits, reward reviews and
+mark-paid rotate that revision; pending writes bypass the cache and late fills
+cannot revive a pre-mutation revision. Cache failures fall back to the origin.
+A failed final revision write or interrupted writer leaves cache reads disabled
+rather than trusting stale money; no automatic financial retry is introduced.
+
+Agent-shop separately caches only known delivered/completed GMShop order profit
+for five minutes, bounded to 10,000 order numbers. Worker Refresh does not bypass
+that cost cache; local refunds are recomputed and rebate jobs always fetch fresh
+profit. Endpoint timing logs contain route templates and `duration_ms`, never
+credentials, query values, customer details or money payloads.

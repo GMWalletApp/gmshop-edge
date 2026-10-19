@@ -8,42 +8,54 @@ import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import {
+	AgentDomains,
 	money,
+	PanelDataAge,
+	PeriodProfit,
 	ProgramError,
 	statusLabel,
 } from "#/features/agent-program/presentation";
+import {
+	agentsQuery,
+	beijingMonth,
+	leaderboardQuery,
+	rulesQuery,
+	withdrawalsQuery,
+} from "#/features/agent-program/queries";
 import { type Agent, amountMinor } from "#/features/agent-program/schema";
 import {
-	getLeaderboardFn,
-	getWithdrawalsFn,
-	listAgentsFn,
 	markWithdrawalPaidFn,
 	reviewLeaderboardFn,
 } from "#/features/agent-program/server/admin";
 import { AgentDetail, ProgramRulesView } from "#/features/agent-program/views";
 import { PageHeader } from "#/layouts/components/page-header";
-import { formatNumber } from "#/lib/format";
+import { formatDateTime, formatNumber } from "#/lib/format";
 import { m } from "#/paraglide/messages";
-
-function beijingMonth() {
-	return new Intl.DateTimeFormat("sv-SE", {
-		year: "numeric",
-		month: "2-digit",
-		timeZone: "Asia/Shanghai",
-	}).format(new Date());
-}
+import { getLocale } from "#/paraglide/runtime";
 
 export function AgentProgramPage() {
 	const [month, setMonth] = useState(beijingMonth);
 	const [selected, setSelected] = useState<number | null>(null);
-	const agents = useQuery({
-		queryKey: ["agent-program", "agents", month],
-		queryFn: () => listAgentsFn({ data: { month } }),
-	});
-	const withdrawals = useQuery({
-		queryKey: ["agent-program", "withdrawals"],
-		queryFn: () => getWithdrawalsFn(),
-	});
+	const client = useQueryClient();
+	const [tab, setTab] = useState("agents");
+	// Start independent reads on the same render; tab CONTENT remains lazy.
+	const agents = useQuery(agentsQuery(month));
+	const leaderboard = useQuery(leaderboardQuery(month));
+	const withdrawals = useQuery(withdrawalsQuery());
+	const rules = useQuery(rulesQuery());
+	const updating =
+		agents.isFetching ||
+		leaderboard.isFetching ||
+		withdrawals.isFetching ||
+		rules.isFetching;
+	const refresh = async () => {
+		await Promise.all([
+			client.fetchQuery({ ...agentsQuery(month, true), staleTime: 0 }),
+			client.fetchQuery({ ...leaderboardQuery(month, true), staleTime: 0 }),
+			client.fetchQuery({ ...withdrawalsQuery(), staleTime: 0 }),
+			client.fetchQuery({ ...rulesQuery(true), staleTime: 0 }),
+		]).catch(() => toast.error(m.agent_program_error()));
+	};
 	const currency = agents.data?.rules.currency ?? "CNY";
 	const columns = useMemo<ColumnDef<Agent>[]>(
 		() => [
@@ -59,9 +71,10 @@ export function AgentProgramPage() {
 						>
 							{row.original.label || `#${row.original.id}`}
 						</Button>
-						<div className="text-muted-foreground text-xs">
-							#{row.original.id} · {row.original.email_masked}
+						<div className="break-all text-muted-foreground text-xs">
+							#{row.original.id} · {row.original.email}
 						</div>
+						<AgentDomains domains={row.original.domains} />
 					</div>
 				),
 			},
@@ -90,25 +103,17 @@ export function AgentProgramPage() {
 			},
 
 			{
-				accessorKey: "our_profit_in_window",
+				id: "our_profit_month",
+				accessorFn: (agent) =>
+					agent.our_profit_month.profit === null
+						? undefined
+						: amountMinor(agent.our_profit_month.profit),
 				header: m.agent_program_our_profit(),
 				cell: ({ row }) => (
-					<div>
-						{row.original.our_profit_in_window === null
-							? m.agent_program_profit_unavailable()
-							: money(row.original.our_profit_in_window, currency)}
-						{row.original.unknown_profit_order_count > 0 && (
-							<p className="text-xs text-muted-foreground">
-								{m.agent_program_cost_unknown({
-									count: formatNumber(row.original.unknown_profit_order_count),
-									amount: money(
-										row.original.unknown_profit_assumed_loss,
-										currency,
-									),
-								})}
-							</p>
-						)}
-					</div>
+					<PeriodProfit
+						value={row.original.our_profit_month}
+						currency={currency}
+					/>
 				),
 			},
 			{
@@ -164,9 +169,32 @@ export function AgentProgramPage() {
 					</label>
 				}
 			/>
-			{agents.isError ? (
-				<ProgramError retry={() => void agents.refetch()} />
-			) : agents.isPending ? (
+			<div
+				className="flex flex-wrap items-center gap-3 text-muted-foreground text-sm"
+				aria-live="polite"
+			>
+				{agents.data && (
+					<PanelDataAge
+						updatedAt={agents.data.data_updated_at}
+						month={agents.data.month}
+					/>
+				)}
+				{updating && (
+					<span className="whitespace-nowrap">
+						{m.agent_program_updating()}
+					</span>
+				)}
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={updating}
+					onClick={() => void refresh()}
+				>
+					{m.agent_program_refresh()}
+				</Button>
+			</div>
+			{agents.isError && <ProgramError retry={() => void agents.refetch()} />}
+			{!agents.data && agents.isError ? null : agents.isPending ? (
 				<output>{m.agent_program_loading()}</output>
 			) : (
 				<>
@@ -189,7 +217,7 @@ export function AgentProgramPage() {
 							</div>
 						))}
 					</div>
-					<Tabs defaultValue="agents">
+					<Tabs value={tab} onValueChange={setTab}>
 						<TabsList className="max-w-full overflow-x-auto">
 							<TabsTrigger value="agents">
 								{m.agent_program_agents()}
@@ -213,13 +241,15 @@ export function AgentProgramPage() {
 							/>
 						</TabsContent>
 						<TabsContent value="leaderboard">
-							<Leaderboard month={month} />
+							{tab === "leaderboard" && <Leaderboard month={month} />}
 						</TabsContent>
 						<TabsContent value="withdrawals">
-							<Withdrawals />
+							{tab === "withdrawals" && <Withdrawals />}
 						</TabsContent>
 						<TabsContent value="rules">
-							<ProgramRulesView rules={agents.data.rules} />
+							{tab === "rules" && (
+								<ProgramRulesView rules={rules.data ?? agents.data.rules} />
+							)}
 						</TabsContent>
 					</Tabs>
 				</>
@@ -236,10 +266,7 @@ export function AgentProgramPage() {
 
 function Leaderboard({ month }: { month: string }) {
 	const client = useQueryClient();
-	const query = useQuery({
-		queryKey: ["agent-program", "leaderboard", month],
-		queryFn: () => getLeaderboardFn({ data: { month } }),
-	});
+	const query = useQuery(leaderboardQuery(month));
 	const [review, setReview] = useState<{
 		id: number;
 		action: "approve" | "reject";
@@ -258,7 +285,8 @@ function Leaderboard({ month }: { month: string }) {
 		},
 		onError: () => toast.error(m.agent_program_error()),
 	});
-	if (query.isError) return <ProgramError retry={() => void query.refetch()} />;
+	if (query.isError && !query.data)
+		return <ProgramError retry={() => void query.refetch()} />;
 	if (!query.data) return <output>{m.agent_program_loading()}</output>;
 	const currency = query.data.rules.currency;
 	const rankingColumns: ColumnDef<(typeof query.data.ranking)[number]>[] = [
@@ -316,6 +344,11 @@ function Leaderboard({ month }: { month: string }) {
 	];
 	return (
 		<div className="space-y-5">
+			<PanelDataAge
+				updatedAt={query.data.data_updated_at}
+				month={query.data.month}
+			/>
+			{query.isError && <ProgramError retry={() => void query.refetch()} />}
 			<ProTable
 				columns={rankingColumns}
 				data={query.data.ranking}
@@ -374,10 +407,7 @@ function Leaderboard({ month }: { month: string }) {
 
 function Withdrawals() {
 	const client = useQueryClient();
-	const query = useQuery({
-		queryKey: ["agent-program", "withdrawals"],
-		queryFn: () => getWithdrawalsFn(),
-	});
+	const query = useQuery(withdrawalsQuery());
 	const [paying, setPaying] = useState<number | null>(null);
 	const mutation = useMutation({
 		mutationFn: markWithdrawalPaidFn,
@@ -388,20 +418,40 @@ function Withdrawals() {
 		},
 		onError: () => toast.error(m.agent_program_error()),
 	});
-	if (query.isError) return <ProgramError retry={() => void query.refetch()} />;
+	if (query.isError && !query.data)
+		return <ProgramError retry={() => void query.refetch()} />;
 	if (!query.data) return <output>{m.agent_program_loading()}</output>;
 	const columns: ColumnDef<(typeof query.data)[number]>[] = [
 		{
 			accessorKey: "label",
 			header: m.agent_program_agents(),
-			cell: ({ row }) => `${row.original.label} #${row.original.reseller_id}`,
+			cell: ({ row }) => (
+				<div>
+					{row.original.label} #{row.original.reseller_id}
+					<p className="break-all text-xs text-muted-foreground">
+						{row.original.email}
+					</p>
+				</div>
+			),
 		},
 		{
 			accessorKey: "amount",
 			header: m.agent_program_amount(),
 			cell: ({ row }) => money(row.original.amount, row.original.currency),
 		},
-		{ accessorKey: "account_masked", header: m.agent_program_account() },
+		{
+			accessorKey: "account",
+			header: m.agent_program_account(),
+			cell: ({ row }) => (
+				<span className="break-all">{row.original.account}</span>
+			),
+		},
+		{
+			accessorKey: "created_at",
+			header: m.agent_program_requested(),
+			cell: ({ row }) =>
+				formatDateTime(row.original.created_at, getLocale(), "Asia/Shanghai"),
+		},
 		{
 			id: "payout",
 			header: m.agent_program_mark_paid(),
@@ -419,6 +469,8 @@ function Withdrawals() {
 	];
 	return (
 		<>
+			<PanelDataAge updatedAt={query.dataUpdatedAt} />
+			{query.isError && <ProgramError retry={() => void query.refetch()} />}
 			<ProTable
 				columns={columns}
 				data={query.data}
