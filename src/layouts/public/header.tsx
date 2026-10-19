@@ -206,18 +206,18 @@ function MobileMenu({
 						<Languages className="size-4 text-primary" />
 						{m.switch_language()}
 					</span>
-					<div className="flex rounded-full bg-muted p-0.5">
+					<div className="flex shrink-0 rounded-full bg-muted p-0.5">
 						{locales.map((locale) => (
 							<button
 								aria-pressed={locale === current}
-								className="rounded-full px-3 py-1 text-xs transition-colors aria-pressed:bg-background aria-pressed:font-semibold aria-pressed:shadow-sm"
+								className="whitespace-nowrap rounded-full px-3 py-1 text-xs transition-colors aria-pressed:bg-background aria-pressed:font-semibold aria-pressed:shadow-sm"
 								key={locale}
 								onClick={() => {
 									if (locale !== current) setLocale(locale);
 								}}
 								type="button"
 							>
-								{localeLabels[locale]}
+								{locale === "zh-CN" ? "中文" : localeLabels[locale]}
 							</button>
 						))}
 					</div>
