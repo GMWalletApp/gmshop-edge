@@ -38,22 +38,6 @@ export async function assertPromotionOwner(
 				"Sign in to the account that owns this coupon",
 			);
 	} else {
-		// Guests can switch order emails freely, so an email comparison cannot
-		// stop self-referral. Only a verified account can redeem an invitation.
-		const buyerAccount =
-			buyer.userId &&
-			(await db
-				.prepare(
-					"SELECT id FROM users WHERE id = ? AND enabled = 1 AND email_verified = 1",
-				)
-				.bind(buyer.userId)
-				.first());
-		if (!buyerAccount)
-			throw new DomainError(
-				"coupon_sign_in_required",
-				403,
-				"Sign in to a verified account to use an invitation code",
-			);
 		const owner = await db
 			.prepare("SELECT id, email FROM users WHERE id = ? AND enabled = 1")
 			.bind(coupon.referrer_user_id)
