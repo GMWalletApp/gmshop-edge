@@ -714,7 +714,7 @@
 	"payment_channels_validation_stripe_webhook": "Stripe Webhook 密钥必须以 whsec_ 开头",
 	"payment_channels_validation_cryptomus_merchant": "请输入有效的 Cryptomus 商户 UUID",
 	"payment_channels_validation_secret_length": "密钥至少需要 8 个字符",
-	"payment_channels_validation_service_url": "请输入可公开访问的 HTTPS 服务地址，不允许本机或内网地址",
+	"payment_channels_validation_service_url": "请输入可公开访问的 HTTPS 服务地址，不允许本机、内网地址或自定义端口",
 	"payment_channels_validation_pid": "请输入 PID",
 	"payment_channels_validation_epay_pid": "EPay PID 只能包含数字",
 	"payment_channels_validation_payment_method": "支付方式必须以字母开头，且只能包含小写字母、数字、下划线或连字符",

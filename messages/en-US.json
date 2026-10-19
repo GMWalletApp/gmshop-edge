@@ -714,7 +714,7 @@
 	"payment_channels_validation_stripe_webhook": "The Stripe Webhook secret must start with whsec_",
 	"payment_channels_validation_cryptomus_merchant": "Enter a valid Cryptomus merchant UUID",
 	"payment_channels_validation_secret_length": "The secret key must contain at least 8 characters",
-	"payment_channels_validation_service_url": "Enter a publicly reachable HTTPS service URL; local and private network addresses are not allowed",
+	"payment_channels_validation_service_url": "Enter a publicly reachable HTTPS service URL without a custom port; local and private network addresses are not allowed",
 	"payment_channels_validation_pid": "Enter a PID",
 	"payment_channels_validation_epay_pid": "The EPay PID may contain digits only",
 	"payment_channels_validation_payment_method": "The payment method must start with a letter and contain only lowercase letters, digits, underscores, or hyphens",
