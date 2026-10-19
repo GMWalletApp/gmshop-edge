@@ -207,3 +207,31 @@ it("only mounts tab content when opened", async () => {
 	});
 	expect(el.textContent).toContain("rules mounted");
 });
+it("hides pending-review and rejected applicants from the table and totals", async () => {
+	const base = list();
+	const applicant = (id: number, status: string) => ({
+		...base.agents[0],
+		id,
+		label: `Applicant ${status}`,
+		status,
+		month: { sales: "1000.00", orders: 1, profit: "0.00" },
+		own_month: { orders: 1, amount: "700.00" },
+	});
+	calls.agents.mockResolvedValue({
+		...base,
+		agents: [
+			...base.agents,
+			applicant(2, "pending_review"),
+			applicant(3, "rejected"),
+		],
+	});
+	await mount();
+	await settle();
+	const table = el.querySelector("[data-table]")?.textContent ?? "";
+	expect(table).toContain("Instant agent");
+	expect(table).not.toContain("Applicant");
+	expect(el.textContent).toContain("本月主站进货");
+	expect(el.textContent).toContain("123.45");
+	expect(el.textContent).not.toContain("2,123.45");
+	expect(el.textContent).not.toContain("1,450.00");
+});

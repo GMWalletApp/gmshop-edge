@@ -149,7 +149,10 @@ export function AgentProgramPage() {
 		],
 		[currency],
 	);
-	const rows = agents.data?.agents ?? [];
+	// 未通过审核（待审核、已拒绝）的申请不算代理，面板不展示也不计入汇总。
+	const rows = (agents.data?.agents ?? []).filter(
+		(a) => a.status !== "pending_review" && a.status !== "rejected",
+	);
 	const totals = {
 		sales: rows.reduce((n, a) => n + amountMinor(a.month.sales), 0n),
 		own: rows.reduce((n, a) => n + amountMinor(a.own_month.amount), 0n),
