@@ -133,10 +133,10 @@ describe("invitation and personal recall checkout", { timeout: 30000 }, () => {
 		const event = await prepareExternal(id, amount);
 		return { event, result: await processShopPaymentEvent(db, channel, event) };
 	}
-	it("reuses one persistent code and attributes a guest order without a customer relationship", async () => {
+	it("reuses one persistent code and attributes a signed-in order without a customer relationship", async () => {
 		const code = await openReferralCoupon(db, promoter);
 		expect(await openReferralCoupon(db, promoter)).toEqual(code);
-		const created = await order(code.code, null);
+		const created = await order(code.code);
 		expect(created.totalMinor).toBe("107600");
 		expect(
 			await db
@@ -154,6 +154,19 @@ describe("invitation and personal recall checkout", { timeout: 30000 }, () => {
 	it("rejects identified self-referrals", async () => {
 		const code = await openReferralCoupon(db, promoter);
 		await expect(order(code.code, promoter)).rejects.toThrow(/own invitation/);
+	});
+	it("refuses invitation codes for guests and unverified accounts", async () => {
+		const code = await openReferralCoupon(db, promoter);
+		await expect(order(code.code, null)).rejects.toMatchObject({
+			code: "coupon_sign_in_required",
+		});
+		await db
+			.prepare("UPDATE users SET email_verified=0 WHERE id=?")
+			.bind(buyer)
+			.run();
+		await expect(order(code.code)).rejects.toMatchObject({
+			code: "coupon_sign_in_required",
+		});
 	});
 	it("issues a campaign once per verified customer, prevents guests claiming it and consumes it once under concurrency", async () => {
 		const old = await emptyOrder();
