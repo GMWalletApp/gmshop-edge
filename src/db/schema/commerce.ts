@@ -643,6 +643,7 @@ export const shopOrders = sqliteTable(
 		}),
 		referrerUserId: text("referrer_user_id").references(() => users.id),
 		referralRewardMinor: text("referral_reward_minor").notNull().default("0"),
+		pricingChannelId: text("pricing_channel_id"),
 		orderNumber: text("order_number").notNull(),
 		idempotencyKey: text("idempotency_key"),
 		userId: text("user_id").references(() => users.id, {

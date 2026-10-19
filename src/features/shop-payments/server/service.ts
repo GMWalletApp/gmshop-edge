@@ -47,6 +47,7 @@ type PaymentCreationContext = {
 	amount_minor: string;
 	currency: string;
 	currency_decimals: number;
+	pricing_channel_id: string | null;
 	contact_email: string;
 	channel_id: string;
 	provider: string;
@@ -111,7 +112,7 @@ export async function createShopPayment(
 		.prepare(
 			`SELECT o.id AS order_id, o.order_number, o.status AS order_status,
 			 COALESCE((SELECT external_minor FROM order_balance_holds WHERE order_id=o.id AND state='held'),o.total_minor) AS amount_minor, o.currency, o.currency_decimals,
-			 o.contact_email,
+			 o.contact_email, o.pricing_channel_id,
 			 pc.id AS channel_id, pc.provider, pc.credential_encrypted,
 			 pc.default_token, pc.default_network, pc.fee_bps, pc.fixed_fee_minor,
 			 NOT EXISTS (
@@ -135,6 +136,16 @@ export async function createShopPayment(
 		);
 	if (context.order_status !== "pending_payment")
 		throw new DomainError("order_not_payable", 409, "Order cannot be paid");
+	// The total was quoted with this channel's prices; another channel would pay that price without its own fee.
+	if (
+		context.pricing_channel_id != null &&
+		context.pricing_channel_id !== context.channel_id
+	)
+		throw new DomainError(
+			"payment_channel_mismatch",
+			409,
+			"This order was priced for another payment channel",
+		);
 	const balanceHold = await db
 		.prepare("SELECT state FROM order_balance_holds WHERE order_id=?")
 		.bind(input.orderId)

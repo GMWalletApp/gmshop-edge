@@ -279,8 +279,8 @@ export async function createMultiStoreOrder(
 				 (id, order_number, idempotency_key, user_id,
 					  contact_email, normalized_contact_email, locale, status, currency, currency_decimals,
 					  subtotal_minor, discount_minor, total_minor, paid_minor, coupon_id,
-					  customer_note, version, expires_at, created_at, updated_at)
-					 SELECT ?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?, ?, ?, ?, ?, '0', ?, ?, 1, ?, ?, ?
+					  customer_note, version, expires_at, created_at, updated_at, pricing_channel_id)
+					 SELECT ?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?, ?, ?, ?, ?, '0', ?, ?, 1, ?, ?, ?, ?
 					 FROM coupons WHERE id = ? AND changes() = 1`,
 				)
 				.bind(
@@ -301,6 +301,7 @@ export async function createMultiStoreOrder(
 					expiresAt,
 					now,
 					now,
+					access.pricingChannelId ?? null,
 					coupon.id,
 				),
 		);
@@ -312,8 +313,8 @@ export async function createMultiStoreOrder(
 				 (id, order_number, idempotency_key, user_id,
 					  contact_email, normalized_contact_email, locale, status, currency, currency_decimals,
 					  subtotal_minor, discount_minor, total_minor, paid_minor, customer_note,
-					  version, expires_at, created_at, updated_at)
-					 VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?, ?, ?, ?, ?, '0', ?, 1, ?, ?, ?)`,
+					  version, expires_at, created_at, updated_at, pricing_channel_id)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?, ?, ?, ?, ?, '0', ?, 1, ?, ?, ?, ?)`,
 				)
 				.bind(
 					orderId,
@@ -332,6 +333,7 @@ export async function createMultiStoreOrder(
 					expiresAt,
 					now,
 					now,
+					access.pricingChannelId ?? null,
 				),
 		);
 	}
