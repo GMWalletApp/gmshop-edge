@@ -1876,7 +1876,6 @@
 	"ip_country": "Country / region",
 	"ip_city": "City (approximate)",
 	"ip_org": "Network organization / ASN",
-	"ip_source": "Primary source: IPQuery. If unavailable, proxycheck.io provides a free fallback, capped at 80 fallback queries per day. Normalized results are cached for 10 minutes. No account, order or key is accepted. Unavailable evidence never produces a safety score.",
 	"ip_policy": "Official supported regions",
 	"ip_policy_date": "Reference list checked: {date}; current official policy takes precedence",
 	"ip_webrtc_note": "No probe runs by default. Clicking contacts Google’s public STUN service, which sees your connection IP. Results stay on this page. Different addresses may reflect dual-stack or routing, not necessarily a leak.",
