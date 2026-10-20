@@ -169,6 +169,8 @@ it("waits for the human check and sends the token with the lookup", async () => 
 	await render();
 	expect(fetch).not.toHaveBeenCalled();
 	expect(container.textContent).toContain("请先完成人机验证");
+	// Never claims to be measuring before verification.
+	expect(container.textContent).not.toContain("正在从你的浏览器直接访问");
 	await act(async () => {
 		document
 			.querySelector<HTMLScriptElement>(

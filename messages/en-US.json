@@ -2478,5 +2478,6 @@
 	"ip_env_note": "Computed only in your browser: not uploaded, not stored, and never used to recognise you. Fingerprint codes identify this device in this browser and change with another browser or settings. Claude's exact risk signals are not public; this only flags common environment problems.",
 	"ip_st_disabled": "Disabled",
 	"ip_adv_webrtc_disabled": "WebRTC is turned off in this browser, nothing can leak",
-	"ip_webrtc_shield": "Install the WebRTC Leak Shield extension (Chrome / Edge)"
+	"ip_webrtc_shield": "Install the WebRTC Leak Shield extension (Chrome / Edge)",
+	"ip_waiting_body": "The check starts automatically once the human check above passes."
 }

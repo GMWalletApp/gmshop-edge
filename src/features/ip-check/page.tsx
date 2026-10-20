@@ -516,9 +516,11 @@ export function IpCheckPage() {
 								: verdictTitles[verdict]()}
 					</h2>
 					<p className="text-muted-foreground text-sm leading-6">
-						{!started || (busy && !claude)
-							? m.ip_loading_body()
-							: verdictBodies[verdict]()}
+						{!started
+							? m.ip_waiting_body()
+							: busy && !claude
+								? m.ip_loading_body()
+								: verdictBodies[verdict]()}
 					</p>
 					<div className="flex flex-wrap gap-2">
 						{claude?.country && (

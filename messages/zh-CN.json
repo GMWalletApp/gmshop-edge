@@ -2478,5 +2478,6 @@
 	"ip_env_note": "以上信息只在你的浏览器里计算，不上传、不保存，本站也不用它识别你。指纹码是这台设备在当前浏览器下的特征编号，换浏览器或改设置会变化。Claude 具体用哪些信号做风控没有公开，这里只提示常见的环境异常。",
 	"ip_st_disabled": "已禁用",
 	"ip_adv_webrtc_disabled": "浏览器已关闭 WebRTC，不会泄漏，保持即可",
-	"ip_webrtc_shield": "安装 WebRTC Leak Shield 插件（Chrome / Edge）"
+	"ip_webrtc_shield": "安装 WebRTC Leak Shield 插件（Chrome / Edge）",
+	"ip_waiting_body": "完成上方的人机验证后，会自动开始检测。"
 }
