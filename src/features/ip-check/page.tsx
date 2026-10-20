@@ -22,6 +22,7 @@ import { m } from "#/paraglide/messages";
 import { getLocale } from "#/paraglide/runtime";
 import { publicIpSchema } from "./address";
 import {
+	advisoryCards,
 	buildCards,
 	type Card,
 	type Level,
@@ -536,7 +537,8 @@ export function IpCheckPage() {
 							</Badge>
 						)}
 						{cards.map((card) =>
-							card.level === "bad" || card.level === "warn" ? (
+							!advisoryCards.has(card.id) &&
+							(card.level === "bad" || card.level === "warn") ? (
 								<Badge key={card.id} level={card.level}>
 									{`${cardTitles[card.id]()} · ${statusLabels[card.status]?.() ?? card.status}`}
 								</Badge>

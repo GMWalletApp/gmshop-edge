@@ -354,11 +354,16 @@ export function buildCards(input: AssessInput): Card[] {
 
 export type Verdict = "good" | "warn" | "bad" | "unknown";
 // No Claude exit means we cannot say anything about Claude; never guess.
+// Advisory cards are shown but never move the overall verdict (matches
+// ipinfo.cv, which reports a language mismatch yet still says "no problem").
+export const advisoryCards: ReadonlySet<CardId> = new Set(["language"]);
+
 export function overallVerdict(
 	claudeIp: string | null,
-	cards: Card[],
+	allCards: Card[],
 ): Verdict {
 	if (!claudeIp) return "unknown";
+	const cards = allCards.filter((card) => !advisoryCards.has(card.id));
 	if (cards.some((card) => card.level === "bad")) return "bad";
 	if (cards.find((card) => card.id === "region")?.level === "unknown")
 		return "unknown";

@@ -252,6 +252,13 @@ it("overall verdict never approves without a Claude exit and follows worst card"
 			buildCards({ ...base, browserTimezone: "Asia/Shanghai" }),
 		),
 	).toBe("warn");
+	// Language is advisory only: shown on its card, never moves the verdict.
+	expect(
+		overallVerdict(
+			"161.77.8.204",
+			buildCards({ ...base, languages: ["zh-CN"] }),
+		),
+	).toBe("good");
 	expect(
 		overallVerdict(
 			"161.77.8.204",
