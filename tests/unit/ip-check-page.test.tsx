@@ -23,7 +23,8 @@ const lookup = {
 	type: "residential",
 	score: 100,
 	risk: 0,
-	networkTimezone: "America/New_York",
+	// Match whatever zone the test machine runs in (CI is UTC).
+	networkTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 	flags: {
 		datacenter: false,
 		chinaCloud: false,
