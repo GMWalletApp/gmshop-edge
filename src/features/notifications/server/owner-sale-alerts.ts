@@ -63,7 +63,28 @@ type SaleAlertRow = {
 	owned_cost_pending_count: number;
 	owned_cost_sources: string | null;
 	owned_cost_notes: string | null;
+	// JSON of the order's agent-access row (sub-site / API opening), if any.
+	agent_access_json?: string | null;
 };
+
+type AgentAccessAlert = {
+	kind: "subsite" | "api";
+	state: string;
+	domain: string | null;
+	error: string | null;
+	attempts: number;
+	requested: string | null;
+	fallback: string | null;
+};
+
+function agentAccessOf(row: { agent_access_json?: string | null }) {
+	if (!row.agent_access_json) return null;
+	try {
+		return JSON.parse(row.agent_access_json) as AgentAccessAlert;
+	} catch {
+		return null;
+	}
+}
 
 type Balance = {
 	amountMinor: string;
@@ -235,7 +256,15 @@ export async function publishPendingOwnerSaleAlerts(input: {
 			        (SELECT GROUP_CONCAT(owned.cost_note, '；') FROM stock_entries owned
 			         JOIN shop_order_items owned_item ON owned_item.id = owned.order_item_id
 			         WHERE owned_item.order_id = orders.id AND owned.cost_note IS NOT NULL)
-			         AS owned_cost_notes
+			         AS owned_cost_notes,
+			        (SELECT json_object('kind', agent.kind, 'state', agent.state,
+			          'domain', agent.domain, 'error', agent.error_code,
+			          'attempts', agent.attempt_count,
+			          'requested', agent.requested_subdomain,
+			          'fallback', agent.subdomain_fallback)
+			         FROM agent_access_orders agent
+			         JOIN shop_order_items agent_item ON agent_item.id = agent.order_item_id
+			         WHERE agent_item.order_id = orders.id LIMIT 1) AS agent_access_json
 			 FROM outbox_events event
 			 JOIN shop_orders orders ON orders.id = event.aggregate_id
 			 WHERE event.event_type = 'owner.sale_alert'
@@ -275,6 +304,24 @@ export async function publishPendingOwnerSaleAlerts(input: {
 			deferred += 1;
 			continue;
 		}
+		// Opening usually finishes within a minute; wait briefly so the alert can
+		// show the real result, then send whatever state it is in.
+		const agent = agentAccessOf(row);
+		if (
+			agent?.state === "pending" &&
+			agent.attempts < 8 &&
+			now - row.event_created_at < 60_000
+		) {
+			await defer(
+				input.db,
+				row.id,
+				now,
+				"owner_sale_waiting_for_agent_access",
+				leaseUntil,
+			);
+			deferred += 1;
+			continue;
+		}
 		if (row.supplier_pending_count > 0) {
 			await defer(
 				input.db,
@@ -290,12 +337,15 @@ export async function publishPendingOwnerSaleAlerts(input: {
 			const balance = input.readBalance
 				? await input.readBalance()
 				: await readAisouBalance(input.db, now, input.fetcher ?? fetch);
-			const stock = await stockLines(
-				input.db,
-				row.aggregate_id,
-				input.readWarehouse ??
-					(() => readWarehouse(input.db, input.fetcher ?? fetch)),
-			);
+			// Access openings have no card stock; their opening line replaces it.
+			const stock = agent
+				? []
+				: await stockLines(
+						input.db,
+						row.aggregate_id,
+						input.readWarehouse ??
+							(() => readWarehouse(input.db, input.fetcher ?? fetch)),
+					);
 			const text = formatFeishuOwnerSaleAlert(row, balance, now, stock);
 			if (input.deliver) await input.deliver(text);
 			else
@@ -343,11 +393,13 @@ export function formatFeishuOwnerSaleAlert(
 ) {
 	const sources = (row.owned_cost_sources ?? "").split(",").filter(Boolean);
 	const notes = row.owned_cost_notes ?? "";
+	const agent = agentAccessOf(row);
 	const costUnknown =
-		row.cost_missing_count > 0 ||
-		(row.owned_cost_pending_count ?? 0) > 0 ||
-		sources.includes("warehouse_unavailable") ||
-		sources.includes("warehouse_unreachable");
+		!agent &&
+		(row.cost_missing_count > 0 ||
+			(row.owned_cost_pending_count ?? 0) > 0 ||
+			sources.includes("warehouse_unavailable") ||
+			sources.includes("warehouse_unreachable"));
 	const walletPaid = row.wallet_balance_after_minor !== null;
 	let feeText = walletPaid ? "无手续费" : "手续费待核对";
 	let netRevenueMinor = BigInt(row.total_minor);
@@ -391,28 +443,32 @@ export function formatFeishuOwnerSaleAlert(
 		.split("；")
 		.filter((note) => note.startsWith("86订单"))
 		.join("；");
-	const source = sources.includes("warehouse_unavailable")
-		? `⚠️ 86 补货失败，请手动补卡（${failedSupply || "原因未知"}）`
-		: sources.includes("warehouse_unreachable") ||
-				(row.owned_cost_pending_count ?? 0) > 0
-			? "⚠️ 兑换站未回报成本，待确认"
-			: sources.includes("warehouse_bought")
-				? `86 自动采购${boughtOrders ? `（${boughtOrders}）` : ""}${sources.includes("warehouse_stock") ? "＋已有 86 卡密" : ""}`
-				: sources.includes("warehouse_stock")
-					? "已有 86 卡密"
-					: row.supplier_fulfilled_count > 0 && row.local_fulfilled_count > 0
-						? "内置库存＋钱包额度下单"
-						: row.supplier_fulfilled_count > 0
-							? "钱包额度下单"
-							: row.local_fulfilled_count > 0
-								? "内置库存"
-								: row.manual_item_count > 0
-									? "人工采购"
-									: "待核对";
-	const cost = costUnknown ? "待确认" : money(row.cost_total_minor, row);
+	const source = agent
+		? `自动开通（${agent.kind === "subsite" ? "子站代理" : "API 对接"}）`
+		: sources.includes("warehouse_unavailable")
+			? `⚠️ 86 补货失败，请手动补卡（${failedSupply || "原因未知"}）`
+			: sources.includes("warehouse_unreachable") ||
+					(row.owned_cost_pending_count ?? 0) > 0
+				? "⚠️ 兑换站未回报成本，待确认"
+				: sources.includes("warehouse_bought")
+					? `86 自动采购${boughtOrders ? `（${boughtOrders}）` : ""}${sources.includes("warehouse_stock") ? "＋已有 86 卡密" : ""}`
+					: sources.includes("warehouse_stock")
+						? "已有 86 卡密"
+						: row.supplier_fulfilled_count > 0 && row.local_fulfilled_count > 0
+							? "内置库存＋钱包额度下单"
+							: row.supplier_fulfilled_count > 0
+								? "钱包额度下单"
+								: row.local_fulfilled_count > 0
+									? "内置库存"
+									: row.manual_item_count > 0
+										? "人工采购"
+										: "待核对";
+	// Openings are self-provisioned: no purchase cost.
+	const costMinor = agent ? 0n : BigInt(row.cost_total_minor);
+	const cost = costUnknown ? "待确认" : money(costMinor.toString(), row);
 	const profit = costUnknown
 		? "待确认"
-		: money((netRevenueMinor - BigInt(row.cost_total_minor)).toString(), row);
+		: money((netRevenueMinor - costMinor).toString(), row);
 	const internal = row.internal_supply_count > 0;
 	const delivery =
 		row.supplier_failed_count > 0
@@ -466,13 +522,45 @@ export function formatFeishuOwnerSaleAlert(
 		`货源：${source}`,
 		`成本：${cost}`,
 		`利润：${profit}${internal ? "（主站这一层）" : ""}`,
-		...(delivery ? [delivery] : []),
+		...(agent ? [`开通：${agentAccessLine(agent)}`] : []),
+		...(delivery && !agent ? [delivery] : []),
 		...(purchaseWallet ? [`采购钱包余额：${purchaseWallet}`] : []),
-		...(stock.length ? ["", "卖出后库存：", ...stock] : []),
+		...(stock.length && !agent ? ["", "卖出后库存：", ...stock] : []),
 		"",
 		...orderLines,
 		`时间：${time}`,
 	].join("\n");
+}
+
+const fallbackReason: Record<string, string> = {
+	taken: "已被占用",
+	reserved: "是保留名",
+	invalid: "格式不符",
+	existing: "未使用（已有子站，沿用原域名）",
+};
+
+export function agentAccessLine(agent: AgentAccessAlert) {
+	const fallback =
+		agent.requested && agent.fallback
+			? `；指定的 ${agent.requested} ${fallbackReason[agent.fallback] ?? agent.fallback}，已自动分配`
+			: "";
+	if (agent.state === "active")
+		return `✅ ${agent.kind === "subsite" ? (agent.domain ?? "子站已开通") : "API 已开通"}${fallback}`;
+	if (agent.state === "revoked" || agent.state === "cancelled")
+		return `↩️ 已撤销（${agent.state}）`;
+	if (agent.attempts >= 8)
+		return `⚠️ 开通失败（${agent.error ?? "agent_access_support_required"}），需人工处理`;
+	const detail = [
+		agent.domain,
+		agent.error === "agent_access_pending"
+			? "等待域名生效，自动重试中"
+			: agent.error
+				? `上次错误 ${agent.error}，自动重试中`
+				: null,
+	]
+		.filter(Boolean)
+		.join("，");
+	return `⏳ 开通中${detail ? `（${detail}）` : ""}${fallback}`;
 }
 
 // One line per sold SKU: storefront codes left, plus the real 86 credentials behind them.
