@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { runTrackedTask } from "#/features/operations/server/task-runs";
+import { sendOwnerAlert } from "#/features/telegram/server/owner-alerts";
 import { DomainError } from "#/lib/domain-error";
 import type { RuntimeConfig } from "#/server/runtime-config";
 import type { SupplierProduct } from "../providers/types";
@@ -110,13 +111,28 @@ export async function syncSupplierSource(input: {
 			const products = incremental
 				? mergeCatalog(previousCatalog.products, fetchedProducts)
 				: fetchedProducts;
-			await updateBoundProducts(input.db, input.source, products, now);
+			const delisted = await updateBoundProducts(
+				input.db,
+				input.source,
+				products,
+				now,
+			);
 			await writeCachedSupplierCatalog(input.cache, input.source, {
 				version: 1,
 				...input.source,
 				syncedAt: now,
 				products,
 			});
+			// Best effort: a failed alert must not fail the catalog sync.
+			if (delisted.length)
+				await sendOwnerAlert(
+					input.db,
+					formatDelistedBindingsAlert(
+						input.source.normalizedApiOrigin,
+						delisted,
+					),
+					{ fetcher: input.fetcher },
+				).catch(() => undefined);
 			return {
 				skipped: false,
 				accountId,
@@ -323,10 +339,14 @@ async function updateBoundProducts(
 	}
 	const bindings = await db
 		.prepare(
-			`SELECT id, sellable_item_id, upstream_product_id, upstream_sku_id,
-			        last_error_code
-			 FROM supplier_bindings WHERE provider = ?
-			 AND normalized_api_origin = ? AND protocol_version = ? AND enabled = 1`,
+			`SELECT sb.id, sb.sellable_item_id, sb.upstream_product_id,
+			        sb.upstream_sku_id, sb.upstream_product_name, sb.last_error_code,
+			        psi.name AS sellable_item_name, p.name AS product_name
+			 FROM supplier_bindings sb
+			 JOIN product_sellable_items psi ON psi.id = sb.sellable_item_id
+			 JOIN products p ON p.id = psi.product_id
+			 WHERE sb.provider = ? AND sb.normalized_api_origin = ?
+			 AND sb.protocol_version = ? AND sb.enabled = 1`,
 		)
 		.bind(source.provider, source.normalizedApiOrigin, source.protocolVersion)
 		.all<{
@@ -334,12 +354,27 @@ async function updateBoundProducts(
 			sellable_item_id: string;
 			upstream_product_id: string;
 			upstream_sku_id: string;
+			upstream_product_name: string;
 			last_error_code: string | null;
+			sellable_item_name: string;
+			product_name: string;
 		}>();
+	const delisted: DelistedBinding[] = [];
 	for (const binding of bindings.results) {
 		if (seen.has(`${binding.upstream_product_id}\0${binding.upstream_sku_id}`))
 			continue;
-		const confirmed = binding.last_error_code === "supplier_sku_missing_once";
+		// A deleted binding stays deleted; it used to flip back to
+		// "missing once" on the next sync and get re-confirmed every other run.
+		const confirmed =
+			binding.last_error_code === "supplier_sku_missing_once" ||
+			binding.last_error_code === "supplier_sku_deleted";
+		if (binding.last_error_code === "supplier_sku_missing_once")
+			delisted.push({
+				productName: binding.product_name,
+				sellableItemName: binding.sellable_item_name,
+				upstreamProductId: binding.upstream_product_id,
+				upstreamProductName: binding.upstream_product_name,
+			});
 		statements.push(
 			db
 				.prepare(
@@ -366,6 +401,28 @@ async function updateBoundProducts(
 	}
 	for (let offset = 0; offset < statements.length; offset += 100)
 		await db.batch(statements.slice(offset, offset + 100));
+	return delisted;
+}
+
+type DelistedBinding = {
+	productName: string;
+	sellableItemName: string;
+	upstreamProductId: string;
+	upstreamProductName: string;
+};
+
+export function formatDelistedBindingsAlert(
+	origin: string,
+	delisted: DelistedBinding[],
+) {
+	return [
+		`⚠️ 上游商品已下架（${new URL(origin).host}），以下规格已自动停售：`,
+		...delisted.map(
+			(item) =>
+				`- ${item.productName}｜${item.sellableItemName}（上游：${item.upstreamProductName}，编号 ${item.upstreamProductId}）`,
+		),
+		"上游若换了新商品，请到后台「供货」切换来源后恢复销售。",
+	].join("\n");
 }
 
 async function sourceAccounts(

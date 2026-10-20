@@ -8,6 +8,11 @@ import {
 	syncAllSupplierCatalogs,
 	syncSupplierCatalogsIfDue,
 } from "#/features/suppliers/server/sync-settings";
+import { upsertFeishuAlertSetting } from "#/features/telegram/server/feishu-alerts";
+import {
+	encryptTelegramOwnerAlertBotToken,
+	telegramOwnerAlertSettingKeys,
+} from "#/features/telegram/server/owner-alerts";
 import { createInitialRuntimeConfig } from "#/server/runtime-config";
 import { applyMigrations } from "./migrations";
 
@@ -353,6 +358,109 @@ describe("supplier source synchronization", { timeout: 30_000 }, () => {
 			upstream_product_name: "New remote title",
 			reference_cost_minor: "101",
 		});
+	});
+
+	it("alerts the owner once when an upstream SKU is confirmed deleted", async () => {
+		await db
+			.prepare(
+				`INSERT INTO system_settings (key, value, is_secret, created_at, updated_at)
+				 VALUES ('runtime.data_encryption_secret', ?, 1, 1, 1)`,
+			)
+			.bind(JSON.stringify(createInitialRuntimeConfig().dataEncryptionSecret))
+			.run();
+		await db.batch([
+			upsertFeishuAlertSetting(
+				db,
+				telegramOwnerAlertSettingKeys.enabled,
+				true,
+				1,
+			),
+			upsertFeishuAlertSetting(
+				db,
+				telegramOwnerAlertSettingKeys.chatId,
+				"-5101401750",
+				1,
+			),
+			upsertFeishuAlertSetting(
+				db,
+				telegramOwnerAlertSettingKeys.botToken,
+				await encryptTelegramOwnerAlertBotToken(
+					db,
+					"1234567890:AAtest-only-owner-alert-token_abcdefgh",
+				),
+				1,
+				true,
+			),
+			db.prepare(
+				`INSERT INTO products
+				 (id, name, description, product_type, status, created_at, updated_at)
+				 VALUES ('gone-product', 'Gemini Pro', '', 'stock', 'active', 1, 1)`,
+			),
+			db.prepare(
+				`INSERT INTO product_sellable_items
+				 (id, product_id, name, fulfillment_source, supplier_status,
+				  currency, currency_decimals, price_minor, cost_minor,
+				  created_at, updated_at)
+				 VALUES ('gone-item', 'gone-product', '18个月', 'supplier',
+				  'available', 'CNY', 2, '1000', '500', 1, 1)`,
+			),
+			db.prepare(
+				`INSERT INTO supplier_bindings
+				 (id, sellable_item_id, provider, normalized_api_origin,
+				  protocol_version, upstream_product_id, upstream_sku_id,
+				  upstream_product_name, upstream_sku_name, reference_cost_minor,
+				  max_cost_minor, stock_quantity, remote_status, last_synced_at,
+				  enabled, created_at, updated_at)
+				 VALUES ('gone-binding', 'gone-item', 'dujiao_next',
+				  'https://supplier.example', '1.3.1-upstream-v1', '9', '9',
+				  'Old upstream item', 'Old upstream item', '500', '680', 5,
+				  'active', 1, 1, 1, 1)`,
+			),
+		]);
+		const alerts: string[] = [];
+		const fetcher: typeof fetch = async (input, init) => {
+			const url = new URL(String(input));
+			if (url.host === "api.telegram.org") {
+				alerts.push(JSON.parse(String(init?.body)).text);
+				return Response.json({ ok: true, result: { message_id: 1 } });
+			}
+			return url.pathname.endsWith("/categories")
+				? categoriesResponse()
+				: catalogResponse();
+		};
+		const states: unknown[] = [];
+		for (const now of [
+			1_800_003_000_000, 1_800_003_600_000, 1_800_004_200_000,
+			1_800_004_800_000,
+		]) {
+			await syncSupplierSource({
+				db,
+				runtime,
+				source,
+				trigger: "scheduled",
+				now,
+				fetcher,
+			});
+			states.push(
+				await db
+					.prepare(
+						`SELECT sb.remote_status, psi.supplier_status
+						 FROM supplier_bindings sb
+						 JOIN product_sellable_items psi ON psi.id = sb.sellable_item_id
+						 WHERE sb.id = 'gone-binding'`,
+					)
+					.first(),
+			);
+		}
+		expect(states).toEqual([
+			{ remote_status: "unknown", supplier_status: "available" },
+			{ remote_status: "deleted", supplier_status: "unavailable" },
+			{ remote_status: "deleted", supplier_status: "unavailable" },
+			{ remote_status: "deleted", supplier_status: "unavailable" },
+		]);
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0]).toContain("Gemini Pro｜18个月");
+		expect(alerts[0]).toContain("Old upstream item");
 	});
 
 	it("refreshes a staged manual binding without enabling supplier fulfillment", async () => {
