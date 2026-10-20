@@ -5,10 +5,58 @@ import {
 	agentAccessRefundPolicy,
 } from "../products";
 import {
+	normalizeSubsitePrefix,
+	type SubsitePrefixState,
+	subsiteDomain,
+	subsitePrefixProblem,
+} from "../subsite-prefix";
+import {
 	type AgentTransport,
 	callAgent,
 	requireAgentAccessEnabled,
 } from "./client";
+
+/**
+ * Local rules first (no remote call for obvious mistakes), then lsrai.shop,
+ * which owns the domain table. Advisory only: provision re-checks and falls back.
+ */
+export async function checkSubsitePrefix(
+	raw: string,
+	transport: AgentTransport = callAgent,
+): Promise<{
+	state: SubsitePrefixState;
+	label: string;
+	domain: string | null;
+}> {
+	const label = normalizeSubsitePrefix(raw);
+	const problem = subsitePrefixProblem(label);
+	if (problem)
+		return {
+			state: problem,
+			label,
+			domain: problem === "invalid" ? null : subsiteDomain(label),
+		};
+	const result = await transport({
+		operation: "check_subdomain",
+		subdomain: label,
+	});
+	if (
+		result.state !== "available" &&
+		result.state !== "invalid" &&
+		result.state !== "reserved" &&
+		result.state !== "taken"
+	)
+		throw new DomainError(
+			"agent_access_unavailable",
+			503,
+			"Sub-site name check is unavailable",
+		);
+	return {
+		state: result.state,
+		label,
+		domain: result.state === "invalid" ? null : subsiteDomain(label),
+	};
+}
 
 export async function prepareAgentCheckout(
 	db: D1Database,
@@ -16,6 +64,7 @@ export async function prepareAgentCheckout(
 		items: Array<{ sellableItemId: string; quantity: number }>;
 		couponCode?: string | null;
 		agentAccessTermsAccepted?: boolean;
+		agentSubsitePrefix?: string | null;
 	},
 	userId?: string,
 	transport: AgentTransport = callAgent,
@@ -110,7 +159,31 @@ export async function prepareAgentCheckout(
 			409,
 			"Confirm the linked account on the product page before paying",
 		);
-	return { kind, email, userId, activeKey, itemId: item.sellableItemId };
+	// Optional; empty means lsrai.shop assigns a pooled name at provision time.
+	const prefix = normalizeSubsitePrefix(input.agentSubsitePrefix ?? "");
+	if (prefix && kind !== "subsite")
+		throw new DomainError(
+			"agent_subsite_prefix_invalid",
+			400,
+			"Only sub-site access takes a sub-site name",
+		);
+	if (prefix) {
+		const checked = await checkSubsitePrefix(prefix, transport);
+		if (checked.state !== "available")
+			throw new DomainError(
+				`agent_subsite_prefix_${checked.state}`,
+				409,
+				"Choose another sub-site name or leave it empty",
+			);
+	}
+	return {
+		kind,
+		email,
+		userId,
+		activeKey,
+		itemId: item.sellableItemId,
+		subdomain: prefix || null,
+	};
 }
 export function agentCheckoutStatement(
 	db: D1Database,
@@ -120,7 +193,7 @@ export function agentCheckoutStatement(
 ) {
 	return db
 		.prepare(
-			`INSERT INTO agent_access_orders (order_item_id,user_id,kind,email,active_key,policy_snapshot,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`,
+			`INSERT INTO agent_access_orders (order_item_id,user_id,kind,email,active_key,policy_snapshot,requested_subdomain,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
 		)
 		.bind(
 			orderItemId,
@@ -129,6 +202,7 @@ export function agentCheckoutStatement(
 			prepared.email,
 			prepared.activeKey,
 			JSON.stringify({ ...agentAccessRefundPolicy, acceptedAt: now }),
+			prepared.subdomain,
 			now,
 			now,
 		);

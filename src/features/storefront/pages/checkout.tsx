@@ -32,6 +32,10 @@ import {
 	AgentAccessCheckout,
 	agentEligibilityOptions,
 } from "#/features/agent-access/components/access";
+import {
+	AgentSubsitePrefixField,
+	useSubsitePrefixCheck,
+} from "#/features/agent-access/components/subsite-prefix";
 import { agentAccessErrorMessage } from "#/features/agent-access/error-message";
 import {
 	agentAccessKind,
@@ -132,6 +136,7 @@ export function StorefrontCheckoutPage() {
 	}, []);
 	const [paymentChannelId, setPaymentChannelId] = useState("");
 	const [termsAccepted, setTermsAccepted] = useState(true);
+	const [subsitePrefix, setSubsitePrefix] = useState("");
 	const [acceptedAgentTermsScope, setAcceptedAgentTermsScope] = useState<
 		string | null
 	>(null);
@@ -171,9 +176,19 @@ export function StorefrontCheckoutPage() {
 			session.data?.user,
 		),
 	);
+	const subsiteAccess =
+		accessItem !== undefined &&
+		agentAccessKind(accessItem.sellableItemId) === "subsite";
+	const prefixCheck = useSubsitePrefixCheck(
+		subsitePrefix,
+		subsiteAccess &&
+			Boolean(session.data?.user?.emailVerified) &&
+			eligibility.data?.state === "eligible",
+	);
 	const agentBlocked =
 		hasAgentAccess &&
-		(items.length !== 1 ||
+		((subsiteAccess && prefixCheck.blocking) ||
+			items.length !== 1 ||
 			accessItem?.quantity !== 1 ||
 			eligibility.status !== "success" ||
 			eligibility.isFetching ||
@@ -364,7 +379,7 @@ export function StorefrontCheckoutPage() {
 			paymentChannelId === "wallet" &&
 			(wallet.isFetching || wallet.isError || !wallet.data),
 	);
-	const checkoutIdempotencyScope = `${checkoutItemsKey}:${paymentChannelId || "unselected"}:${couponCode.trim().toUpperCase()}:${useOrderBalance}:${email}:${JSON.stringify(inputValues)}`;
+	const checkoutIdempotencyScope = `${checkoutItemsKey}:${paymentChannelId || "unselected"}:${couponCode.trim().toUpperCase()}:${useOrderBalance}:${email}:${JSON.stringify(inputValues)}:${subsiteAccess ? prefixCheck.label : ""}`;
 	const idempotencyKey =
 		idempotencyKeys.current.get(checkoutIdempotencyScope) ??
 		(() => {
@@ -505,6 +520,9 @@ export function StorefrontCheckoutPage() {
 				paymentCurrency,
 				termsAccepted: true,
 				...(hasAgentAccess ? { agentAccessTermsAccepted } : {}),
+				...(subsiteAccess
+					? { agentSubsitePrefix: prefixCheck.label || null }
+					: {}),
 				items: items.map((item) => ({
 					sellableItemId: item.sellableItemId,
 					quantity: item.quantity,
@@ -990,6 +1008,13 @@ export function StorefrontCheckoutPage() {
 									<AgentAccessCheckout
 										compact
 										itemId={accessItem?.sellableItemId ?? ""}
+									/>
+								) : null}
+								{subsiteAccess && eligibility.data?.state === "eligible" ? (
+									<AgentSubsitePrefixField
+										value={subsitePrefix}
+										onChange={setSubsitePrefix}
+										check={prefixCheck}
 									/>
 								) : null}
 								{hasAgentAccess ? (

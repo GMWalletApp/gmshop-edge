@@ -17,6 +17,7 @@ type AccessOrder = {
 	attempt_count: number;
 	next_attempt_at: number;
 	refund_pending: number;
+	requested_subdomain: string | null;
 };
 const query = `SELECT a.*,oi.order_id,o.status AS order_status,o.paid_minor,
  EXISTS(SELECT 1 FROM refunds r WHERE r.order_id=o.id AND r.status IN ('pending','processing')) AS refund_pending
@@ -103,9 +104,26 @@ export async function processAgentDelivery(
 			...(row.kind === "subsite"
 				? {
 						paidAmount: `${BigInt(row.paid_minor) / 100n}.${(BigInt(row.paid_minor) % 100n).toString().padStart(2, "0")}`,
+						...(row.requested_subdomain
+							? { subdomain: row.requested_subdomain }
+							: {}),
 					}
 				: {}),
 		});
+		// Record the assigned host as soon as lsrai.shop reports it, so the
+		// order page and owner alert can show it while HTTPS is still warming up.
+		if (result.domain)
+			await db
+				.prepare(
+					"UPDATE agent_access_orders SET domain=?,subdomain_fallback=?,updated_at=? WHERE order_item_id=? AND state='pending'",
+				)
+				.bind(
+					result.domain,
+					result.subdomainFallback ?? null,
+					Date.now(),
+					row.order_item_id,
+				)
+				.run();
 		if (result.state !== "active" || !result.userId)
 			throw new Error("not_ready");
 		if (!result.initialPasswordValid) {

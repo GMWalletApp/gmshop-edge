@@ -209,6 +209,11 @@ function OwnedAgentAccessDelivery({
 							{access.isError ? (
 								<p role="alert">{m.agent_access_support()}</p>
 							) : null}
+							{data.domain && data.prefixFallback ? (
+								<p className="text-sm">
+									{m.agent_subsite_prefix_fallback({ domain: data.domain })}
+								</p>
+							) : null}
 							{data.domain ? (
 								<a
 									className="break-all underline"

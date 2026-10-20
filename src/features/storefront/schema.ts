@@ -65,6 +65,8 @@ const orderInputValuesSchema = z
 
 const orderContactSchema = {
 	agentAccessTermsAccepted: z.boolean().optional(),
+	// Optional lsrai.shop sub-site label; validated with lsrai.shop at checkout.
+	agentSubsitePrefix: z.string().trim().toLowerCase().max(32).nullish(),
 	email: z.email().trim().toLowerCase().max(320).nullable().default(null),
 	couponCode: z.string().trim().toUpperCase().max(64).default(""),
 	idempotencyKey: z.string().trim().min(8).max(200),

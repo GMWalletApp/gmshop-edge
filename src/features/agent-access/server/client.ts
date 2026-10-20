@@ -12,6 +12,10 @@ const responseSchema = z.object({
 		"active",
 		"provisioning",
 		"revoked",
+		"available",
+		"invalid",
+		"reserved",
+		"taken",
 	]),
 	initialPasswordValid: z.boolean().optional(),
 	userId: z.number().int().positive().optional(),
@@ -24,17 +28,26 @@ const responseSchema = z.object({
 		.regex(/^[a-f0-9]{64}$/)
 		.optional(),
 	purpose: z.enum(["bind", "activate"]).optional(),
+	requestedSubdomain: z.string().max(32).optional(),
+	subdomainFallback: z
+		.enum(["taken", "reserved", "invalid", "existing"])
+		.optional(),
 });
 export type AgentResult = z.infer<typeof responseSchema>;
-export type AgentRequest = {
-	operation: "check" | "provision" | "status" | "access" | "revoke";
-	sourceUserId: string;
-	email: string;
-	kind: AgentAccessKind;
-	orderItemId?: string;
-	initialPassword?: string;
-	paidAmount?: string;
-};
+export type AgentRequest =
+	| {
+			operation: "check" | "provision" | "status" | "access" | "revoke";
+			sourceUserId: string;
+			email: string;
+			kind: AgentAccessKind;
+			orderItemId?: string;
+			initialPassword?: string;
+			paidAmount?: string;
+			/** Requested sub-site prefix (label only); provision falls back when unusable. */
+			subdomain?: string;
+	  }
+	// Advisory pre-checkout availability; lsrai.shop re-checks at provision.
+	| { operation: "check_subdomain"; subdomain: string };
 export type AgentTransport = (input: AgentRequest) => Promise<AgentResult>;
 export async function requireAgentAccessEnabled(db: D1Database) {
 	const row = await db
