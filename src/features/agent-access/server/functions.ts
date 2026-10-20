@@ -5,8 +5,10 @@ import { resolveStoreAccount } from "#/features/storefront/server/account";
 import { DomainError } from "#/lib/domain-error";
 import { decryptSecret } from "#/lib/secrets";
 import { getDb } from "#/server/db.server";
+import { claimFixedWindowRateLimit } from "#/server/rate-limit";
 import { loadRuntimeConfig } from "#/server/runtime-config";
 import { type AgentAccessKind, agentAccessKind } from "../products";
+import { checkSubsitePrefix } from "./checkout";
 import {
 	accessURL,
 	agentOrigin,
@@ -58,6 +60,35 @@ export const checkAgentAccessFn = createServerFn({ method: "POST" })
 					: `${agentOrigin}/auth/login`,
 		};
 	});
+export const subsitePrefixCheckLimit = { limit: 20, windowMs: 60_000 };
+// Signed-in, verified buyers only; each call is one signed lsrai.shop request.
+export async function checkSubsitePrefixForBuyer(
+	db: D1Database,
+	userId: string,
+	prefix: string,
+	check: typeof checkSubsitePrefix = checkSubsitePrefix,
+) {
+	await requireAgentAccessEnabled(db);
+	const quota = await claimFixedWindowRateLimit(db, {
+		bucketKey: `agent-subsite-prefix:${userId}`,
+		...subsitePrefixCheckLimit,
+	});
+	if (!quota.allowed)
+		throw new DomainError(
+			"agent_subsite_prefix_rate_limited",
+			429,
+			"Too many sub-site name checks; wait a minute",
+		);
+	return check(prefix);
+}
+export const checkAgentSubsitePrefixFn = createServerFn({ method: "POST" })
+	.validator((input: { prefix: string }) =>
+		z.object({ prefix: z.string().max(64) }).parse(input),
+	)
+	.handler(async ({ data }) => {
+		const { db, user } = await buyer();
+		return checkSubsitePrefixForBuyer(db, user.id, data.prefix);
+	});
 const orderSchema = z.object({ orderNumber: z.string().min(1).max(100) });
 async function owned(db: D1Database, userId: string, orderNumber: string) {
 	const row = await db
@@ -72,6 +103,8 @@ async function owned(db: D1Database, userId: string, orderNumber: string) {
 			email: string;
 			state: string;
 			domain: string | null;
+			requested_subdomain: string | null;
+			subdomain_fallback: string | null;
 			attempt_count: number;
 			error_code: string | null;
 			order_status: string;
@@ -89,6 +122,11 @@ export const getAgentDeliveryFn = createServerFn({ method: "POST" })
 			kind: row.kind,
 			state: row.state,
 			domain: row.domain,
+			// Only a lost race is worth telling the buyer; other fallbacks were refused at checkout.
+			prefixFallback:
+				row.subdomain_fallback === "taken" && row.requested_subdomain
+					? row.requested_subdomain
+					: null,
 			needsSupport: row.attempt_count >= 8,
 			errorCode: row.error_code,
 			orderStatus: row.order_status,

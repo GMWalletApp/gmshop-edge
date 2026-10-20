@@ -12,6 +12,14 @@ export function agentAccessErrorMessage(error: unknown) {
 			return m.agent_access_bind();
 		case "agent_access_terms_required":
 			return m.agent_access_terms_missing();
+		case "agent_subsite_prefix_invalid":
+			return m.agent_subsite_prefix_invalid();
+		case "agent_subsite_prefix_reserved":
+			return m.agent_subsite_prefix_reserved();
+		case "agent_subsite_prefix_taken":
+			return m.agent_subsite_prefix_taken();
+		case "agent_subsite_prefix_rate_limited":
+			return m.agent_subsite_prefix_rate_limited();
 		case "authentication_required":
 		case "unauthorized":
 		case "agent_access_email_verification":

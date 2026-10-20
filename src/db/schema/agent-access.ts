@@ -22,6 +22,8 @@ export const agentAccessOrders = sqliteTable(
 			.default("pending"),
 		remoteUserId: integer("remote_user_id"),
 		domain: text("domain"),
+		requestedSubdomain: text("requested_subdomain"),
+		subdomainFallback: text("subdomain_fallback"),
 		attemptCount: integer("attempt_count").notNull().default(0),
 		nextAttemptAt: integer("next_attempt_at").notNull().default(0),
 		errorCode: text("error_code"),

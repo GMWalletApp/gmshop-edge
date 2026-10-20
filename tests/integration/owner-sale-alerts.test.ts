@@ -583,3 +583,173 @@ it("names AISOU restocks and its balance", () => {
 		"AISOU 余额：¥1002.00",
 	]);
 });
+
+describe("owner sale alerts for agent access", { timeout: 30_000 }, () => {
+	let miniflare: Miniflare;
+	let db: D1Database;
+	const createdAt = Date.parse("2026-10-20T04:00:00Z");
+
+	beforeEach(async () => {
+		miniflare = new Miniflare({
+			modules: true,
+			script: "export default { fetch() { return new Response('ok') } }",
+			d1Databases: { DB: crypto.randomUUID() },
+		});
+		db = await miniflare.getD1Database("DB");
+		await applyMigrations(db);
+		await seedSale(db);
+		await db.batch([
+			db.prepare(
+				"UPDATE product_sellable_items SET fulfillment_source='local',name='一次性开通',price_minor='19900' WHERE id='sellable'",
+			),
+			db.prepare(
+				"UPDATE shop_orders SET total_minor='19900',subtotal_minor='19900',paid_minor='19900' WHERE id='order'",
+			),
+			db.prepare(
+				"UPDATE shop_order_items SET product_name='子站代理一次性开通',sellable_item_name='一次性开通',unit_price_minor='19900',subtotal_minor='19900' WHERE id='item'",
+			),
+			db
+				.prepare("UPDATE outbox_events SET created_at=? WHERE id='alert'")
+				.bind(createdAt),
+			db.prepare(
+				"INSERT INTO users(id,name,email,email_verified,enabled,balance_minor,created_at,updated_at) VALUES ('buyer','Buyer','agent@example.test',1,1,'0',1,1)",
+			),
+			db.prepare(
+				`INSERT INTO agent_access_orders
+				 (order_item_id,user_id,kind,email,state,requested_subdomain,attempt_count,created_at,updated_at)
+				 VALUES ('item','buyer','subsite','agent@example.test','pending','mystore',1,1,1)`,
+			),
+		]);
+	});
+
+	afterEach(async () => miniflare.dispose());
+
+	const publish = (now: number, messages: string[]) =>
+		publishPendingOwnerSaleAlerts({
+			db,
+			now,
+			readBalance: async () => null,
+			readWarehouse: async () => {
+				throw new Error("access openings must not read card stock");
+			},
+			deliver: async (text) => {
+				messages.push(text);
+			},
+		});
+
+	it("waits briefly for the opening, then reports it with zero cost and no stock line", async () => {
+		const messages: string[] = [];
+		await expect(publish(createdAt + 5_000, messages)).resolves.toMatchObject({
+			deferred: 1,
+			sent: 0,
+		});
+		await db
+			.prepare(
+				"UPDATE agent_access_orders SET state='active',domain='mystore.lsrai.shop' WHERE order_item_id='item'",
+			)
+			.run();
+		await db
+			.prepare("UPDATE outbox_events SET next_attempt_at=NULL WHERE id='alert'")
+			.run();
+		await expect(publish(createdAt + 20_000, messages)).resolves.toMatchObject({
+			sent: 1,
+		});
+		const text = messages[0] ?? "";
+		expect(text).toContain("货源：自动开通（子站代理）");
+		expect(text).toContain("成本：¥0.00");
+		expect(text).toContain("利润：¥199.00");
+		expect(text).toContain("开通：✅ mystore.lsrai.shop");
+		expect(text).not.toContain("货源：待核对");
+		expect(text).not.toContain("待确认");
+		expect(text).not.toContain("剩余卡密");
+		expect(text).not.toContain("卖出后库存");
+	});
+
+	it("sends 开通中 with the assigned host when the opening is still warming up", async () => {
+		await db
+			.prepare(
+				"UPDATE agent_access_orders SET domain='apple.lsrai.shop',subdomain_fallback='taken',error_code='agent_access_pending' WHERE order_item_id='item'",
+			)
+			.run();
+		const messages: string[] = [];
+		await expect(publish(createdAt + 61_000, messages)).resolves.toMatchObject({
+			sent: 1,
+		});
+		expect(messages[0]).toContain(
+			"开通：⏳ 开通中（apple.lsrai.shop，等待域名生效，自动重试中）；指定的 mystore 已被占用，已自动分配",
+		);
+	});
+});
+
+it("formats API openings and opening failures", () => {
+	const row = {
+		order_number: "GMAPI",
+		order_status: "completed",
+		currency: "CNY",
+		currency_decimals: 2,
+		total_minor: "1990",
+		contact_email: "agent@example.test",
+		items_summary: "API 对接一次性开通 · 一次性开通 × 1",
+		cost_total_minor: "0",
+		cost_missing_count: 1,
+		local_fulfilled_count: 0,
+		supplier_fulfilled_count: 0,
+		local_stock_remaining_summary: "一次性开通 0",
+		supplier_item_count: 0,
+		manual_item_count: 0,
+		supplier_pending_count: 0,
+		supplier_failed_count: 0,
+		payment_channel: "支付宝",
+		payment_amount_minor: "1990",
+		payment_currency: "CNY",
+		payment_currency_decimals: 2,
+		payment_fee_bps: 100,
+		payment_fixed_fee_minor: "0",
+		wallet_balance_after_minor: null,
+		internal_supply_count: 0,
+		downstream_order_no: null,
+		owned_cost_pending_count: 0,
+		owned_cost_sources: null,
+		owned_cost_notes: null,
+	};
+	const api = formatFeishuOwnerSaleAlert(
+		{
+			...row,
+			agent_access_json: JSON.stringify({
+				kind: "api",
+				state: "active",
+				domain: null,
+				error: null,
+				attempts: 1,
+				requested: null,
+				fallback: null,
+			}),
+		},
+		null,
+		Date.now(),
+		["· 一次性开通：剩余卡密 0 ⚠️"],
+	);
+	expect(api).toContain("货源：自动开通（API 对接）");
+	expect(api).toContain("成本：¥0.00");
+	expect(api).toContain("利润：¥19.70");
+	expect(api).toContain("开通：✅ API 已开通");
+	expect(api).not.toContain("剩余卡密");
+	const failed = formatFeishuOwnerSaleAlert(
+		{
+			...row,
+			agent_access_json: JSON.stringify({
+				kind: "subsite",
+				state: "pending",
+				domain: null,
+				error: "agent_access_conflict",
+				attempts: 8,
+				requested: null,
+				fallback: null,
+			}),
+		},
+		null,
+	);
+	expect(failed).toContain(
+		"开通：⚠️ 开通失败（agent_access_conflict），需人工处理",
+	);
+});

@@ -1,6 +1,9 @@
 import { Miniflare } from "miniflare";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { encryptNotificationConfig } from "#/features/notifications/secrets";
+import {
+	decryptNotificationMessage,
+	encryptNotificationConfig,
+} from "#/features/notifications/secrets";
 import {
 	enqueueEmailNotification,
 	processEmailNotification,
@@ -9,6 +12,7 @@ import {
 import { fanOutPendingCommerceNotifications } from "#/features/notifications/server/fanout";
 import { flushPendingCommerceNotifications } from "#/features/notifications/server/flush";
 import type { NotificationQueueMessage } from "#/server/queue/types";
+import { loadRuntimeConfig } from "#/server/runtime-config";
 import { applyMigrations } from "./migrations";
 
 describe("notification delivery", { timeout: 30_000 }, () => {
@@ -364,6 +368,43 @@ describe("notification delivery", { timeout: 30_000 }, () => {
 			"buyer@customer.com",
 		);
 		expect(String(state?.message_encrypted)).not.toContain("ORDER-1001");
+	});
+
+	it("adds the owner's WeChat to the payment email of access orders only", async () => {
+		await seedPaidOrder(database);
+		const readText = async () => {
+			const row = await database
+				.prepare(
+					"SELECT message_encrypted FROM notification_deliveries WHERE event = 'order_paid' ORDER BY created_at DESC LIMIT 1",
+				)
+				.first<{ message_encrypted: string }>();
+			const runtime = await loadRuntimeConfig(database);
+			return JSON.parse(
+				await decryptNotificationMessage(
+					row?.message_encrypted ?? "",
+					runtime.commerceSecret,
+				),
+			).text as string;
+		};
+		await fanOutPendingCommerceNotifications(database);
+		expect(await readText()).not.toContain("owner-wechat-qr");
+		await database.batch([
+			database.prepare("DELETE FROM notification_deliveries"),
+			database.prepare(
+				"INSERT INTO users(id,name,email,email_verified,enabled,balance_minor,created_at,updated_at) VALUES ('agent-buyer','Buyer','buyer@customer.com',1,1,'0',1,1)",
+			),
+			database.prepare(
+				`INSERT INTO agent_access_orders (order_item_id,user_id,kind,email,created_at,updated_at)
+				 VALUES ('item-1001','agent-buyer','subsite','buyer@customer.com',1,1)`,
+			),
+			database.prepare(
+				"UPDATE outbox_events SET status='pending', idempotency_key='shop-order-paid:order-1001:3' WHERE id='order-paid-outbox'",
+			),
+		]);
+		await fanOutPendingCommerceNotifications(database);
+		expect(await readText()).toMatch(
+			/(有问题请添加微信联系我|Questions\? Add me on WeChat\.) https:\/\/shop\.example\/owner-wechat-qr\.jpg$/,
+		);
 	});
 
 	it("publishes customer notifications immediately without waiting for cron", async () => {
