@@ -856,9 +856,6 @@ export function IpCheckPage() {
 										: m.ip_waiting()}
 						</p>
 					)}
-					<p className="text-muted-foreground text-xs leading-5">
-						{m.ip_source()}
-					</p>
 					<p className="text-muted-foreground text-xs">
 						{m.ip_policy_date({ date: regionPolicyDate })}
 					</p>
