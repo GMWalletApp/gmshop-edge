@@ -25,7 +25,9 @@ const emailSendingPaths = new Set([
 ]);
 
 // Exact interactive entry points only: never challenge payment or OAuth callbacks.
-export function turnstileAction(request: Request): string | null {
+export function turnstileAction(
+	request: Request,
+): "register" | "support" | null {
 	if (request.method !== "POST") return null;
 	const path = new URL(request.url).pathname.replace(/\/$/, "");
 	if (emailSendingPaths.has(path)) return "register";
@@ -39,7 +41,19 @@ export async function verifyTurnstile(
 	db?: D1Database,
 ): Promise<Response | null> {
 	const action = turnstileAction(request);
-	if (!action || !publicTurnstileConfig(config).enabled) return null;
+	if (!action) return null;
+	return verifyTurnstileAction(request, config, db, action);
+}
+
+// Shared Siteverify path. The caller chooses the action from the route, never
+// from client input, so a token minted for one page cannot unlock another.
+export async function verifyTurnstileAction(
+	request: Request,
+	config: TurnstileConfig,
+	db: D1Database | undefined,
+	action: "register" | "support" | "ipcheck",
+): Promise<Response | null> {
+	if (!publicTurnstileConfig(config).enabled) return null;
 	const reject = (status = 403) =>
 		Response.json(
 			{

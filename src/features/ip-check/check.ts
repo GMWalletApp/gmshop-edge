@@ -74,7 +74,10 @@ export const ipCheckSchema = z.object({
 			anycast: null,
 		}),
 	providerRisk: z.number().min(0).max(100).nullable().default(null),
-	warning: z.enum(["quota", "provider", "disabled"]).nullable().default(null),
+	warning: z
+		.enum(["quota", "provider", "disabled", "verify"])
+		.nullable()
+		.default(null),
 	checkedAt: z.string().default(""),
 	ranking: z
 		.object({ total: z.number(), percentile: z.number() })
