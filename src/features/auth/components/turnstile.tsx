@@ -79,7 +79,7 @@ function Challenge({
 	);
 }
 
-export function useTurnstile(action: "register" | "support") {
+export function useTurnstile(action: "register" | "support" | "ipcheck") {
 	const [token, setToken] = useState("");
 	const [attempt, setAttempt] = useState(0);
 	const config = useQuery({

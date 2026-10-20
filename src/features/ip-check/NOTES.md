@@ -129,3 +129,22 @@ risk signals are not verified. This page cannot guarantee prevention of suspensi
   migration or manual business-data edit was executed during that correction.
 - Sharing uses a first-party QR URL without the target IP. Its generated PNG was
   decoded successfully; the local sample download was labeled TEST-FIXTURE.
+
+## 2026-10 Claude-exit redesign
+
+- References: https://ip.skk.moe/ (split-routing table) and
+  https://ipinfo.cv/claude-ai-check (verdict + per-item advice). Store-native
+  implementation; no code copied. `nb5p/MyIP` (MIT) confirmed the
+  `/cdn-cgi/trace` technique only.
+- The browser fetches `https://{claude.ai,anthropic.com,chatgpt.com,grok.com}/cdn-cgi/trace`
+  directly (all send `Access-Control-Allow-Origin: *`), so the score is computed
+  for the exit Claude sees, not the exit that reaches this site. No Claude exit →
+  no lookup, no score, verdict "unknown".
+- Domestic exit: `myip.ipip.net/json`. DNS resolver: `{random}.edns.ip-api.com/json`
+  (owner accepted ip-api free-tier terms on 2026-10-20 for this free public page).
+- Provider lookups now require a Turnstile token with action `ipcheck` when
+  Turnstile is configured; without it `/api/ip-check` returns edge facts only with
+  `warning: "verify"` and 403. One token per run.
+- Browser fingerprint (Canvas/WebGL FNV-1a codes, GPU, OS, automation flag) is
+  computed and displayed client-side only; never uploaded or stored. Findings:
+  automation, virtual GPU, OS/browser mismatch.

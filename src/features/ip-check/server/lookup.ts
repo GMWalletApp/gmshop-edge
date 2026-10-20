@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { claimFixedWindowRateLimit } from "#/server/rate-limit";
 import type { RuntimeEnv } from "#/server/runtime/types";
+import { verifyTurnstileAction } from "#/server/turnstile";
 import { canonicalIp, knownAnycast, publicIpSchema } from "../address";
 import {
 	checkIp,
@@ -248,6 +249,16 @@ export async function handleIpCheck(
 		};
 	const ip = base.ip ? canonicalIp(base.ip) : null;
 	if (!ip || !env.DB || env.runtime !== "cloudflare") return respond(base);
+	// Provider lookups spend shared quota: require a fresh human check first.
+	// Without one, the caller still gets the free edge facts, never a score.
+	const challenge = await verifyTurnstileAction(
+		request,
+		env,
+		env.DB as D1Database,
+		"ipcheck",
+	);
+	if (challenge)
+		return respond({ ...base, warning: "verify" }, challenge.status);
 	const digest = await hash(ip);
 	const cacheKey = `ip-check:v2:${await hash(`${ip}|${base.edgeCountry ?? "lookup"}`)}`;
 	let cached: IpCheck | null = null;

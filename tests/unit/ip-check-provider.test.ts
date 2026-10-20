@@ -331,3 +331,48 @@ it("never invents 100 when all identity sources are empty and no positive risk i
 			.score,
 	).toBeNull();
 });
+it("requires a human check before spending provider quota when Turnstile is on", async () => {
+	const fetcher = vi.fn().mockResolvedValue(Response.json(primary));
+	vi.stubGlobal("fetch", fetcher);
+	const runtime = {
+		...env(),
+		TURNSTILE_SITE_KEY: "site",
+		TURNSTILE_SECRET_KEY: "secret",
+	} as RuntimeEnv;
+	const response = await handleIpCheck(request(), runtime);
+	expect(response?.status).toBe(403);
+	const body = ipCheckSchema.parse(await response?.json());
+	expect(body.warning).toBe("verify");
+	expect(body.score).toBeNull();
+	expect(fetcher).not.toHaveBeenCalled();
+});
+it("a verified ipcheck token unlocks the lookup; a token for another action does not", async () => {
+	const runtime = {
+		...env(),
+		TURNSTILE_SITE_KEY: "site",
+		TURNSTILE_SECRET_KEY: "secret",
+	} as RuntimeEnv;
+	const signed = (action: string) =>
+		vi.fn(async (url: string | URL | Request) =>
+			String(url).includes("siteverify")
+				? Response.json({ success: true, action, hostname: "shop.example" })
+				: Response.json(primary),
+		);
+	const withToken = () => {
+		const req = request();
+		const copy = new Request(req, {
+			headers: {
+				"cf-connecting-ip": "203.0.113.10",
+				"cf-turnstile-response": "token",
+			},
+		});
+		Object.defineProperty(copy, "cf", { value: (req as { cf?: unknown }).cf });
+		return copy;
+	};
+	vi.stubGlobal("fetch", signed("register"));
+	expect((await handleIpCheck(withToken(), runtime))?.status).toBe(403);
+	vi.stubGlobal("fetch", signed("ipcheck"));
+	const response = await handleIpCheck(withToken(), runtime);
+	expect(response?.status).toBe(200);
+	expect(ipCheckSchema.parse(await response?.json()).score).toBe(100);
+});
