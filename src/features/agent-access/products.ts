@@ -20,6 +20,20 @@ export function agentAccessKind(itemId: string): AgentAccessKind | null {
 	return null;
 }
 
+export function isAgentAccessProduct(productId: string) {
+	return Object.values(agentAccessProducts).some(
+		(product) => product.productId === productId,
+	);
+}
+
+// Owner contact shown to every buyer of either access product (order page and
+// payment email). Static public asset; never shown for other products.
+export const agentOwnerWeChat = {
+	imagePath: "/owner-wechat-qr.jpg",
+	"zh-CN": "有问题请添加微信联系我",
+	"en-US": "Questions? Add me on WeChat.",
+} as const;
+
 // A fixed, versioned purchase notice for these two products, not a policy engine.
 export const agentAccessRefundPolicy = {
 	version: "2026-10-08",

@@ -8,6 +8,7 @@ import {
 	agentAccessKind,
 	agentAccessProducts,
 	agentAccessRefundPolicy,
+	agentOwnerWeChat,
 } from "../products";
 import {
 	listAgentAccessIssuesFn,
@@ -113,6 +114,30 @@ export function AgentAccessCheckout({
 				</>
 			)}
 		</section>
+	);
+}
+// Tap opens the full-size image so phones can zoom or long-press to scan.
+export function AgentOwnerWeChat() {
+	return (
+		<div className="grid justify-items-start gap-2 border-t pt-3">
+			<p className="font-medium text-sm">{m.agent_access_wechat()}</p>
+			<a
+				href={agentOwnerWeChat.imagePath}
+				target="_blank"
+				rel="noreferrer"
+				aria-label={m.agent_access_wechat_enlarge()}
+				className="rounded-lg border bg-white p-1 focus-visible:outline-2 focus-visible:outline-ring"
+			>
+				<img
+					src={agentOwnerWeChat.imagePath}
+					alt={m.agent_access_wechat_alt()}
+					width={160}
+					height={204}
+					loading="lazy"
+					className="h-auto w-40"
+				/>
+			</a>
+		</div>
 	);
 }
 export function AgentAccessDelivery({ orderNumber }: { orderNumber: string }) {
@@ -239,6 +264,7 @@ function OwnedAgentAccessDelivery({
 							</p>
 						</>
 					) : null}
+					{data.state !== "revoked" ? <AgentOwnerWeChat /> : null}
 				</>
 			)}
 		</section>
