@@ -1,6 +1,6 @@
 {
   "name": "gmshop-edge",
-  "version": "1.33.0",
+  "version": "1.33.1",
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
