@@ -350,6 +350,7 @@ function RateSyncSettingsForm({
 	pending: boolean;
 	syncing: boolean;
 	onSave: (data: {
+		provider: SyncSettings["provider"];
 		enabled: boolean;
 		intervalMs: number;
 		adjustmentBps: number;
@@ -381,12 +382,15 @@ function RateSyncSettingsForm({
 					label: m.exchange_rates_source(),
 					valueType: "select",
 					required: true,
-					disabled: true,
 					fieldProps: {
 						options: [
 							{
 								label: "exchangerate.host",
 								value: "exchangerate_host",
+							},
+							{
+								label: "AllRatesToday",
+								value: "allratestoday",
 							},
 						],
 					},
@@ -395,6 +399,7 @@ function RateSyncSettingsForm({
 					name: "apiKey",
 					label: m.exchange_rates_api_key(),
 					valueType: "password",
+					hidden: (values) => values.provider === "allratestoday",
 					required: !settings?.hasApiKey,
 					tooltip: m.exchange_rates_api_key_tooltip(),
 					fieldProps: {
@@ -430,7 +435,7 @@ function RateSyncSettingsForm({
 			]}
 			initialValues={{
 				enabled: settings?.enabled ?? false,
-				provider: "exchangerate_host",
+				provider: settings?.provider ?? "exchangerate_host",
 				intervalMinutes: (settings?.intervalMs ?? 86_400_000) / 60_000,
 				adjustmentBps: settings?.adjustmentBps ?? 0,
 			}}
@@ -463,6 +468,10 @@ function RateSyncSettingsForm({
 			onFinish={async (values) => {
 				try {
 					await onSave({
+						provider:
+							values.provider === "allratestoday"
+								? "allratestoday"
+								: "exchangerate_host",
 						enabled: formBooleanValue(values.enabled),
 						intervalMs: Number(values.intervalMinutes ?? 1_440) * 60_000,
 						adjustmentBps: Number(values.adjustmentBps ?? 0),
@@ -482,7 +491,8 @@ function RateSyncSettingsForm({
 
 function syncStatusText(settings: SyncSettings | undefined) {
 	if (!settings) return m.exchange_rates_sync_status_loading();
-	if (!settings.hasApiKey) return null;
+	if (settings.provider === "exchangerate_host" && !settings.hasApiKey)
+		return null;
 	if (settings.lastStatus === "failed")
 		return m.exchange_rates_sync_status_failed();
 	if (settings.lastSyncedAt)

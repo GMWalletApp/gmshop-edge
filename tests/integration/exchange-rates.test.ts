@@ -265,6 +265,68 @@ describe("store-owned fiat exchange rates", () => {
 		});
 	});
 
+	it("synchronizes through the keyless AllRatesToday provider without credentials", async () => {
+		await db.batch([
+			db
+				.prepare(
+					`UPDATE system_settings SET value = ?
+					 WHERE key = 'exchange_rates.sync.config'`,
+				)
+				.bind(
+					JSON.stringify({
+						provider: "allratestoday",
+						enabled: true,
+						intervalMs: 3_600_000,
+						adjustmentBps: 0,
+					}),
+				),
+			db.prepare(
+				"DELETE FROM system_settings WHERE key = 'exchange_rates.sync.credential'",
+			),
+		]);
+		const before = await db
+			.prepare("SELECT raw_rate FROM exchange_rates WHERE id = 'usd-gbp'")
+			.first<{ raw_rate: string }>();
+		const requests: string[] = [];
+		const request = async (input: string | URL | Request) => {
+			requests.push(String(input));
+			return Response.json({
+				result: "success",
+				base_code: "USD",
+				rates: { USD: 1, CNY: 7.1, EUR: 0.86 },
+			});
+		};
+		await expect(
+			syncExchangeRatesIfDue(
+				db,
+				createSecretKeyring(),
+				request as typeof fetch,
+				10_000_000,
+			),
+		).resolves.toMatchObject({ updated: 2, failed: 1 });
+		expect(requests).toEqual(["https://allratestoday.com/api/open/latest/USD"]);
+		const rows = await db
+			.prepare(
+				`SELECT id, raw_rate, source FROM exchange_rates
+				 WHERE id IN ('usd-cny', 'usd-eur') ORDER BY id`,
+			)
+			.all<{ id: string; raw_rate: string; source: string }>();
+		expect(rows.results).toEqual([
+			{ id: "usd-cny", raw_rate: "7.1", source: "allratestoday" },
+			{ id: "usd-eur", raw_rate: "0.86", source: "allratestoday" },
+		]);
+		expect(
+			await db
+				.prepare("SELECT raw_rate FROM exchange_rates WHERE id = 'usd-gbp'")
+				.first<{ raw_rate: string }>(),
+		).toEqual(before);
+		expect(await loadExchangeRateSyncSettings(db)).toMatchObject({
+			provider: "allratestoday",
+			hasApiKey: false,
+			lastStatus: "succeeded",
+		});
+	});
+
 	it("rejects a payment currency when its maintained rate is absent", async () => {
 		await db
 			.prepare(
