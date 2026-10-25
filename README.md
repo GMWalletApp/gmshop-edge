@@ -343,6 +343,12 @@ bun run build
 bun run build:bun
 ```
 
+Production CSP behavior must also be checked with `bun run build` followed by
+`bun run preview`. The development server intentionally omits the nonce policy.
+Verify `/` and `/install` hydrate without CSP violations, and that the response
+nonce matches every initial and streamed script; do not disable CSP to make the
+check pass.
+
 Run `bun run hooks:install` once per clone to enable the local Lefthook
 Conventional Commit check. Its commitlint policy is declared in `package.json`.
 
