@@ -1199,7 +1199,7 @@
 	"exchange_rates_expires_at": "失效时间（可选）",
 	"exchange_rates_expires_at_tooltip": "到达该时间后不能再生成新的支付报价；留空表示长期有效",
 	"exchange_rates_sync_settings": "同步设置",
-	"exchange_rates_sync_settings_description": "使用 exchangerate.host 定时刷新货币目录中的全部支付货币",
+	"exchange_rates_sync_settings_description": "使用 exchangerate.host（需要 API Key）或 AllRatesToday（无需密钥，约 30 种欧洲央行参考汇率货币）定时刷新货币目录中的全部支付货币",
 	"exchange_rates_auto_sync": "自动同步",
 	"exchange_rates_auto_sync_tooltip": "到达设置间隔后，由定时任务自动刷新货币目录中的全部支付货币",
 	"exchange_rates_source": "汇率来源",

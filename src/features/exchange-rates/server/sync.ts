@@ -7,8 +7,21 @@ import { DomainError } from "#/lib/domain-error";
 import { decimalPlaces, divideByRate } from "#/lib/money";
 import { decryptSecret } from "#/lib/secrets";
 
-const provider = "exchangerate_host" as const;
-const providerUrl = "https://api.exchangerate.host/live";
+export const exchangeRateProviders = [
+	"exchangerate_host",
+	"allratestoday",
+] as const;
+export type ExchangeRateProvider = (typeof exchangeRateProviders)[number];
+const providerUrls = {
+	exchangerate_host: "https://api.exchangerate.host/live",
+	// Keyless ECB reference rates (about 30 currencies), refreshed daily.
+	allratestoday: "https://allratestoday.com/api/open/latest/USD",
+} as const satisfies Record<ExchangeRateProvider, string>;
+export function exchangeRateProviderRequiresApiKey(
+	provider: ExchangeRateProvider,
+) {
+	return provider === "exchangerate_host";
+}
 export const exchangeRateSyncSettingKeys = {
 	config: "exchange_rates.sync.config",
 	credential: "exchange_rates.sync.credential",
@@ -16,7 +29,7 @@ export const exchangeRateSyncSettingKeys = {
 } as const;
 
 const syncConfigSettingSchema = z.object({
-	provider: z.literal(provider),
+	provider: z.enum(exchangeRateProviders),
 	enabled: z.boolean(),
 	intervalMs: z.number().int().min(300_000).max(2_592_000_000),
 	adjustmentBps: z.number().int().min(-9_999).max(100_000),
@@ -44,7 +57,7 @@ const providerPayloadSchema = z.looseObject({
 
 export type ExchangeRateSyncSettings = {
 	enabled: boolean;
-	provider: typeof provider;
+	provider: ExchangeRateProvider;
 	intervalMs: number;
 	adjustmentBps: number;
 	hasApiKey: boolean;
@@ -54,7 +67,7 @@ export type ExchangeRateSyncSettings = {
 };
 
 type SyncConfigRow = {
-	provider: string;
+	provider: ExchangeRateProvider;
 	enabled: boolean;
 	interval_ms: number;
 	adjustment_bps: number;
@@ -97,6 +110,7 @@ export async function syncConfiguredExchangeRates(
 			rates.results.map((rate) => rate.quote_currency),
 			config.apiKey,
 			request,
+			config.provider,
 		);
 		const expiresAt = now + Math.max(config.intervalMs * 2, 3_600_000);
 		const updates = rates.results.flatMap((rate) => {
@@ -112,7 +126,7 @@ export async function syncConfiguredExchangeRates(
 							.bind(
 								rawRate,
 								applyRateAdjustment(rawRate, config.adjustmentBps),
-								provider,
+								config.provider,
 								config.adjustmentBps,
 								now,
 								expiresAt,
@@ -151,7 +165,8 @@ export async function syncExchangeRatesIfDue(
 	const row = await loadSyncConfig(db);
 	if (
 		!row?.enabled ||
-		!row.api_key_encrypted ||
+		(exchangeRateProviderRequiresApiKey(row.provider) &&
+			!row.api_key_encrypted) ||
 		(row.last_synced_at != null && row.last_synced_at + row.interval_ms > now)
 	)
 		return null;
@@ -165,8 +180,9 @@ export async function syncExchangeRatesIfDue(
 export async function fetchFiatRates(
 	baseCurrency: string,
 	quoteCurrencies: string[],
-	apiKey: string,
+	apiKey: string | null,
 	request: typeof fetch = fetch,
+	provider: ExchangeRateProvider = "exchangerate_host",
 ) {
 	const base = baseCurrency.toUpperCase();
 	const quotes = [
@@ -175,9 +191,13 @@ export async function fetchFiatRates(
 	const requested = [
 		...new Set([base, ...quotes].filter((code) => code !== "USD")),
 	];
-	const parameters = new URLSearchParams({ access_key: apiKey });
+	const parameters = new URLSearchParams({ access_key: apiKey ?? "" });
 	if (requested.length > 0) parameters.set("currencies", requested.join(","));
-	const response = await request(`${providerUrl}?${parameters}`, {
+	const url =
+		provider === "allratestoday"
+			? providerUrls.allratestoday
+			: `${providerUrls.exchangerate_host}?${parameters}`;
+	const response = await request(url, {
 		headers: { accept: "application/json" },
 		signal: AbortSignal.timeout(8_000),
 	});
@@ -227,20 +247,27 @@ async function requireSyncConfig(db: D1Database, keyring: string) {
 			409,
 			"Exchange-rate synchronization is not configured",
 		);
-	if (!row.api_key_encrypted)
+	if (
+		exchangeRateProviderRequiresApiKey(row.provider) &&
+		!row.api_key_encrypted
+	)
 		throw new DomainError(
 			"exchange_rate_sync_credentials_required",
 			409,
 			"Exchange-rate provider credentials are required",
 		);
 	return {
+		provider: row.provider,
 		intervalMs: row.interval_ms,
 		adjustmentBps: row.adjustment_bps,
-		apiKey: await decryptSecret(
-			row.api_key_encrypted,
-			keyring,
-			"exchange-rate-provider",
-		),
+		apiKey:
+			row.provider === "exchangerate_host" && row.api_key_encrypted
+				? await decryptSecret(
+						row.api_key_encrypted,
+						keyring,
+						"exchange-rate-provider",
+					)
+				: null,
 	};
 }
 
@@ -307,7 +334,7 @@ async function markSyncResult(
 function presentSyncSettings(row: SyncConfigRow | null) {
 	return {
 		enabled: row?.enabled ?? false,
-		provider,
+		provider: row?.provider ?? "exchangerate_host",
 		intervalMs: row?.interval_ms ?? 86_400_000,
 		adjustmentBps: row?.adjustment_bps ?? 0,
 		hasApiKey: Boolean(row?.api_key_encrypted),

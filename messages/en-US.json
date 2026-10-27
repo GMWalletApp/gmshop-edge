@@ -1199,7 +1199,7 @@
 	"exchange_rates_expires_at": "Expires at (optional)",
 	"exchange_rates_expires_at_tooltip": "After this time the currency can no longer create new payment quotes; leave empty for no expiry.",
 	"exchange_rates_sync_settings": "Sync settings",
-	"exchange_rates_sync_settings_description": "Use exchangerate.host to refresh every payment currency in the catalog on schedule.",
+	"exchange_rates_sync_settings_description": "Use exchangerate.host (API key) or AllRatesToday (keyless, about 30 ECB reference-rate currencies) to refresh every payment currency in the catalog on schedule.",
 	"exchange_rates_auto_sync": "Automatic sync",
 	"exchange_rates_auto_sync_tooltip": "Refresh every payment currency in the catalog automatically when the configured interval is due.",
 	"exchange_rates_source": "Rate source",
