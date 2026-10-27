@@ -376,6 +376,9 @@ describe("store-owned fiat exchange rates", () => {
 			lastStatus: "failed",
 			lastErrorCode: "http_429",
 		});
+		// The manual-sync path records the failure and then throws the
+		// structured domain error; only syncExchangeRatesIfDue turns it into
+		// a result object.
 		await expect(
 			syncConfiguredExchangeRates(
 				db,
@@ -385,7 +388,7 @@ describe("store-owned fiat exchange rates", () => {
 				}) as typeof fetch,
 				13_700_002,
 			),
-		).resolves.toMatchObject({ failed: 1, updated: 0 });
+		).rejects.toMatchObject({ code: "exchange_rate_sync_failed", status: 502 });
 		expect(await loadExchangeRateSyncSettings(db)).toMatchObject({
 			lastStatus: "failed",
 			lastErrorCode: "provider_error",
