@@ -303,6 +303,10 @@ bun run build
 bun run build:bun
 ```
 
+生产 CSP 行为还需先执行 `bun run build`，再通过 `bun run preview` 检查；开发服务器
+有意不启用 nonce 策略。确认 `/` 和 `/install` 水合后无 CSP 违规，响应策略中的 nonce
+与初始及流式脚本一致；不能通过关闭 CSP 让检查通过。
+
 每个 clone 执行一次 `bun run hooks:install`，即可启用本地 Lefthook Conventional
 Commit 检查；commitlint 策略声明在 `package.json` 中。
 

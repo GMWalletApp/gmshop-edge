@@ -30,14 +30,7 @@ import type { RuntimeEnv } from "#/server/runtime/types";
 import { handleScheduled } from "#/server/scheduled";
 import { appendServerTiming, takeRequestTiming } from "#/server/server-timing";
 
-// The SSR renderer stamps the request's CSP nonce on every inline and module
-// script it emits (and exposes it to the client through the csp-nonce meta).
-const streamHandler: typeof defaultStreamHandler = (context) => {
-	const nonce = cspNonce(context.request);
-	if (nonce) context.router.options.ssr = { nonce };
-	return defaultStreamHandler(context);
-};
-const appFetch = createStartHandler(streamHandler);
+const appFetch = createStartHandler(defaultStreamHandler);
 
 // Requests above this size are refused before any handler buffers them; the
 // largest legitimate body is an automation artifact upload (100 MiB).
