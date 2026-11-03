@@ -6,6 +6,8 @@ import {
 	exchangeRatePattern,
 } from "#/features/exchange-rates/rates";
 import {
+	ALLRATESTODAY_DEFAULT_VALIDITY_MS,
+	allRatesTodayValiditySchema,
 	exchangeRateProviderRequiresApiKey,
 	exchangeRateProviders,
 	exchangeRateSyncSettingKeys,
@@ -57,6 +59,11 @@ const syncSettingsSchema = z.object({
 	enabled: z.boolean(),
 	intervalMs: z.number().int().min(300_000).max(2_592_000_000),
 	adjustmentBps: z.number().int().min(-9_999).max(100_000),
+	// AllRatesToday validity from the publication time, 1h..7d (default 24h);
+	// ignored by exchangerate.host. Out-of-range values are rejected here.
+	publicationValidityMs: allRatesTodayValiditySchema.default(
+		ALLRATESTODAY_DEFAULT_VALIDITY_MS,
+	),
 	apiKey: z.string().trim().max(512).optional(),
 });
 
@@ -163,6 +170,7 @@ export const saveExchangeRateSyncSettingsFn = createServerFn({ method: "POST" })
 						enabled: data.enabled,
 						intervalMs: data.intervalMs,
 						adjustmentBps: data.adjustmentBps,
+						publicationValidityMs: data.publicationValidityMs,
 					}),
 					context.currentUser.id,
 					now,
@@ -201,6 +209,7 @@ export const saveExchangeRateSyncSettingsFn = createServerFn({ method: "POST" })
 						enabled: before.enabled,
 						intervalMs: before.intervalMs,
 						adjustmentBps: before.adjustmentBps,
+						publicationValidityMs: before.publicationValidityMs,
 						hasApiKey: before.hasApiKey,
 					},
 					after: {
@@ -208,6 +217,7 @@ export const saveExchangeRateSyncSettingsFn = createServerFn({ method: "POST" })
 						enabled: data.enabled,
 						intervalMs: data.intervalMs,
 						adjustmentBps: data.adjustmentBps,
+						publicationValidityMs: data.publicationValidityMs,
 						hasApiKey: Boolean(apiKeyEncrypted),
 						credentialsChanged: Boolean(apiKey),
 					},

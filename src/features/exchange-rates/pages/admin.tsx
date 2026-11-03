@@ -248,6 +248,24 @@ export function ExchangeRatesTable({
 			{syncStatus ? (
 				<p className="text-muted-foreground text-xs">{syncStatus}</p>
 			) : null}
+			{syncSettings.data?.provider === "allratestoday" ? (
+				// Availability tradeoff of the daily feed, plus the provider's
+				// terms: commercial use is allowed; visible attribution is
+				// required only on public pages that display these rates.
+				<p className="text-muted-foreground text-xs">
+					{m.exchange_rates_allratestoday_notice({
+						hours: String(syncSettings.data.publicationValidityMs / 3_600_000),
+					})}{" "}
+					<a
+						href="https://allratestoday.com/terms/#attribution"
+						target="_blank"
+						rel="noreferrer"
+						className="underline underline-offset-2"
+					>
+						{m.exchange_rates_allratestoday_terms()}
+					</a>
+				</p>
+			) : null}
 			<ProTable
 				className="min-h-0 flex-1"
 				columns={columns}
@@ -354,6 +372,7 @@ function RateSyncSettingsForm({
 		enabled: boolean;
 		intervalMs: number;
 		adjustmentBps: number;
+		publicationValidityMs: number;
 		apiKey?: string;
 	}) => Promise<unknown>;
 	onSync: () => Promise<unknown>;
@@ -409,6 +428,20 @@ function RateSyncSettingsForm({
 					},
 				},
 				{
+					name: "publicationValidityHours",
+					label: m.exchange_rates_publication_validity(),
+					hidden: (values) => values.provider !== "allratestoday",
+					required: true,
+					tooltip: m.exchange_rates_publication_validity_tooltip(),
+					fieldProps: {
+						inputMode: "numeric",
+						min: 1,
+						max: 168,
+						step: 1,
+						suffix: m.catalog_duration_hours(),
+					},
+				},
+				{
 					name: "intervalMinutes",
 					label: m.exchange_rates_sync_interval(),
 					required: true,
@@ -438,6 +471,8 @@ function RateSyncSettingsForm({
 				provider: settings?.provider ?? "exchangerate_host",
 				intervalMinutes: (settings?.intervalMs ?? 86_400_000) / 60_000,
 				adjustmentBps: settings?.adjustmentBps ?? 0,
+				publicationValidityHours:
+					(settings?.publicationValidityMs ?? 86_400_000) / 3_600_000,
 			}}
 			submitter={({ submitting }) => (
 				<>
@@ -475,6 +510,8 @@ function RateSyncSettingsForm({
 						enabled: formBooleanValue(values.enabled),
 						intervalMs: Number(values.intervalMinutes ?? 1_440) * 60_000,
 						adjustmentBps: Number(values.adjustmentBps ?? 0),
+						publicationValidityMs:
+							Number(values.publicationValidityHours ?? 24) * 3_600_000,
 						...(String(values.apiKey ?? "").trim()
 							? { apiKey: String(values.apiKey).trim() }
 							: {}),
