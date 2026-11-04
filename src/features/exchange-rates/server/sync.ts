@@ -120,6 +120,24 @@ type SyncConfigRow = {
 
 type SyncRateRow = { id: string; quote_currency: string };
 
+// A shorter validity has to bind stored publications at once: a sync cannot
+// be relied on for this, because it refuses a publication that is already
+// past the new duration and may not reach the provider at all. Only expiry
+// moves, and only downwards, so the observation time stays the publication
+// time and a longer validity still waits for the next sync.
+export function capAllRatesTodayExpiryStatement(
+	db: D1Database,
+	validityMs: number,
+	now: number,
+) {
+	return db
+		.prepare(
+			`UPDATE exchange_rates SET expires_at = observed_at + ?, updated_at = ?
+			 WHERE source = 'allratestoday' AND expires_at > observed_at + ?`,
+		)
+		.bind(validityMs, now, validityMs);
+}
+
 export async function loadExchangeRateSyncSettings(db: D1Database) {
 	const row = await loadSyncConfig(db);
 	return presentSyncSettings(row);

@@ -45,7 +45,7 @@ GMShop Edge 是可部署到 Cloudflare Workers 或 Bun/Nitro Docker 容器的自
   AllRatesToday（约 30 种欧洲央行参考汇率货币，每个工作日发布一次）刷新。
   AllRatesToday 的汇率行以服务商发布时间作为观测时间，并在其后管理员配置的
   时长内可报价（1 至 168 小时，默认严格 24 小时），因此按默认值在周末和节假日
-  不可报价；重复抓取未变化的发布不会延长有效期。开放接口允许商业使用，仅在
+  不可报价；重复抓取未变化的发布不会延长有效期；保存更短的时长会立即作用于已存储的汇率行，无需服务商响应。开放接口允许商业使用，仅在
   公开展示汇率的页面上需要来源标注（https://allratestoday.com/terms/#attribution）。
 - 通过 Better Auth 在运行时配置邮箱密码、社交、OIDC 和 Telegram 认证 Provider，
   无需重新构建 Worker。Telegram Web 登录同时支持 OIDC code 回调和经过服务端验签的

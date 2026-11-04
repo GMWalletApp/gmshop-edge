@@ -12,6 +12,7 @@ import {
 	saveExchangeRateSyncSettingsFn,
 	syncExchangeRatesNowFn,
 } from "#/features/exchange-rates/server/admin";
+import { quotePaymentCurrency } from "#/features/exchange-rates/server/quote";
 import {
 	loadExchangeRateSyncCredential,
 	loadExchangeRateSyncSettings,
@@ -291,5 +292,154 @@ describe("exchange-rate sync settings server function", () => {
 			code: "exchange_rate_sync_credentials_required",
 		});
 		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	describe("shortening the AllRatesToday validity", () => {
+		const hour = 3_600_000;
+		const published = 1_900_000_000_000;
+		const allRatesToday = { ...base, provider: "allratestoday" as const };
+		const shortened = {
+			observed_at: published,
+			expires_at: published + 24 * hour,
+		};
+
+		const publication = () =>
+			Response.json({
+				result: "success",
+				base_code: "USD",
+				time_last_update_unix: published / 1000,
+				rates: { USD: 1, EUR: 0.86 },
+			});
+		function at(time: number) {
+			vi.spyOn(Date, "now").mockReturnValue(time);
+			return time;
+		}
+		const stored = () =>
+			db
+				.prepare(
+					"SELECT observed_at, expires_at FROM exchange_rates WHERE id = 'usd-eur'",
+				)
+				.first();
+		const quote = (now: number) =>
+			quotePaymentCurrency(db, {
+				amountMinor: "10000",
+				currency: "USD",
+				currencyDecimals: 2,
+				paymentCurrency: "EUR",
+				now,
+			});
+		const unavailable = { code: "exchange_rate_unavailable" };
+
+		// Accepted at 72h, then 30 hours old: outside a 24h validity.
+		async function storedAt72h() {
+			at(published + hour);
+			const fetchSpy = vi
+				.spyOn(globalThis, "fetch")
+				.mockImplementation(async () => publication());
+			await save({ ...allRatesToday, publicationValidityMs: 72 * hour });
+			await expect(syncNow({})).resolves.toMatchObject({ updated: 1 });
+			const now = at(published + 30 * hour);
+			await expect(quote(now)).resolves.toMatchObject({ rateId: "usd-eur" });
+			return { fetchSpy, now };
+		}
+
+		afterEach(async () => {
+			await db
+				.prepare(
+					`UPDATE exchange_rates SET source = 'manual', raw_rate = '0.9',
+					 rate = '0.9', observed_at = 1000, expires_at = NULL
+					 WHERE id = 'usd-eur'`,
+				)
+				.run();
+			await db
+				.prepare(
+					"DELETE FROM exchange_rates WHERE id IN ('usd-gbp', 'usd-jpy')",
+				)
+				.run();
+		});
+
+		it("withdraws the stored publication on save, without contacting the provider", async () => {
+			const { fetchSpy, now } = await storedAt72h();
+			fetchSpy.mockClear();
+
+			await save({ ...allRatesToday, publicationValidityMs: 24 * hour });
+
+			expect(fetchSpy).not.toHaveBeenCalled();
+			expect(await stored()).toEqual(shortened);
+			await expect(quote(now)).rejects.toMatchObject(unavailable);
+		});
+
+		it.each([
+			["serves the same, now expired, publication", publication],
+			["rate-limits", () => new Response("slow down", { status: 429 })],
+			["is unavailable", () => new Response("down", { status: 503 })],
+		])("stays withdrawn when the provider then %s", async (_, response) => {
+			const { fetchSpy, now } = await storedAt72h();
+			await save({ ...allRatesToday, publicationValidityMs: 24 * hour });
+			fetchSpy.mockImplementation(async () => response());
+
+			await syncNow({}).catch(() => undefined);
+
+			expect(await stored()).toEqual(shortened);
+			await expect(quote(now)).rejects.toMatchObject(unavailable);
+		});
+
+		it("keeps a publication quotable until the exact new boundary", async () => {
+			await storedAt72h();
+			const boundary = published + 24 * hour;
+			at(boundary - 1);
+
+			await save({ ...allRatesToday, publicationValidityMs: 24 * hour });
+
+			expect(await stored()).toEqual(shortened);
+			await expect(quote(boundary - 1)).resolves.toMatchObject({
+				rateId: "usd-eur",
+			});
+			await expect(quote(boundary)).rejects.toMatchObject(unavailable);
+		});
+
+		it("leaves a longer validity to the next sync", async () => {
+			at(published + hour);
+			vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+				publication(),
+			);
+			await save(allRatesToday);
+			await syncNow({});
+			expect(await stored()).toEqual(shortened);
+
+			await save({ ...allRatesToday, publicationValidityMs: 72 * hour });
+
+			expect(await stored()).toEqual(shortened);
+		});
+
+		it("does not touch other providers or manual rows", async () => {
+			const rows = [
+				["usd-gbp", "GBP", "exchangerate_host", published + 72 * hour],
+				["usd-jpy", "JPY", "manual", published + 72 * hour],
+			] as const;
+			for (const [id, quoteCurrency, source, expiresAt] of rows)
+				await db
+					.prepare(
+						`INSERT INTO exchange_rates
+						 (id, base_currency, quote_currency, raw_rate, rate, source,
+						  enabled, adjustment_bps, sort_order, observed_at, expires_at,
+						  created_at, updated_at)
+						 VALUES (?, 'USD', ?, '1', '1', ?, 1, 0, 100, ?, ?, 1000, 1000)`,
+					)
+					.bind(id, quoteCurrency, source, published, expiresAt)
+					.run();
+			at(published + 30 * hour);
+
+			await save({ ...allRatesToday, publicationValidityMs: 24 * hour });
+
+			const after = await db
+				.prepare(
+					"SELECT expires_at FROM exchange_rates WHERE id IN ('usd-gbp', 'usd-jpy')",
+				)
+				.all<{ expires_at: number }>();
+			expect(after.results.map((row) => row.expires_at)).toEqual(
+				rows.map((row) => row[3]),
+			);
+		});
 	});
 });

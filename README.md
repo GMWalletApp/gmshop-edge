@@ -57,7 +57,8 @@ fulfillment, and a permission-driven administration console.
   publication time and stay quotable for an administrator-configured duration
   after it (1 to 168 hours, default a strict 24 hours), so at the default they
   are not quotable over weekends and holidays; re-fetching an unchanged
-  publication never extends validity. Commercial use of the open endpoint is
+  publication never extends validity, and saving a shorter duration applies to
+  stored rows at once, without a provider response. Commercial use of the open endpoint is
   allowed and attribution is only required on public pages that display the
   rates (https://allratestoday.com/terms/#attribution).
 - Configure email/password, social, OIDC, and Telegram authentication providers

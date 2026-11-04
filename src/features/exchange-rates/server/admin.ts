@@ -8,6 +8,7 @@ import {
 import {
 	ALLRATESTODAY_DEFAULT_VALIDITY_MS,
 	allRatesTodayValiditySchema,
+	capAllRatesTodayExpiryStatement,
 	exchangeRateProviderRequiresApiKey,
 	exchangeRateProviders,
 	exchangeRateSyncSettingKeys,
@@ -196,6 +197,11 @@ export const saveExchangeRateSyncSettingsFn = createServerFn({ method: "POST" })
 							),
 					]
 				: []),
+			capAllRatesTodayExpiryStatement(
+				context.db,
+				data.publicationValidityMs,
+				now,
+			),
 			createAuditStatement(
 				context.db,
 				context.request,
