@@ -251,8 +251,9 @@ export function ExchangeRatesTable({
 			{syncSettings.data?.provider === "allratestoday" ? (
 				// Availability tradeoff of the daily feed, plus the provider's
 				// terms: commercial use is allowed; visible attribution is
-				// required only on public pages that display these rates.
-				<p className="text-muted-foreground text-xs">
+				// required only on public pages that display these rates. The cap
+				// keeps it inside the phone viewport, where the settings pane clips.
+				<p className="max-w-[calc(100vw-3.5rem)] text-muted-foreground text-xs md:max-w-none">
 					{m.exchange_rates_allratestoday_notice({
 						hours: String(syncSettings.data.publicationValidityMs / 3_600_000),
 					})}{" "}
