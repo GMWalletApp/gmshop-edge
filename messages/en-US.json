@@ -1201,7 +1201,7 @@
 	"exchange_rates_sync_settings": "Sync settings",
 	"exchange_rates_sync_settings_description": "Use exchangerate.host (API key) or AllRatesToday (keyless; about 30 ECB reference-rate currencies, published once per business day) to refresh every payment currency in the catalog on schedule.",
 	"exchange_rates_publication_validity": "Publication validity",
-	"exchange_rates_publication_validity_tooltip": "How long an AllRatesToday publication stays quotable, counted from its publication time (not the fetch time), 1 to 168 hours. The default 24 hours leaves no quotable rate over weekends and holidays until the next publication; a longer value trades freshness for availability. Re-fetching an unchanged publication never extends it.",
+	"exchange_rates_publication_validity_description": "How long an AllRatesToday publication stays quotable, counted from its publication time (not the fetch time), 1 to 168 hours. The default 24 hours leaves no quotable rate over weekends and holidays until the next publication; a longer value trades freshness for availability.",
 	"exchange_rates_allratestoday_notice": "AllRatesToday publishes about 30 ECB reference-rate currencies once per business day. Each publication is quotable for {hours} hours from its publication time; at the 24-hour default, these currencies cannot be quoted over weekends and holidays until the next publication. Commercial use is allowed; visible attribution is required only on public pages that display these rates.",
 	"exchange_rates_allratestoday_terms": "Provider terms",
 	"exchange_rates_auto_sync": "Automatic sync",

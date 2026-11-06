@@ -432,7 +432,7 @@ function RateSyncSettingsForm({
 					label: m.exchange_rates_publication_validity(),
 					hidden: (values) => values.provider !== "allratestoday",
 					required: true,
-					tooltip: m.exchange_rates_publication_validity_tooltip(),
+					extra: m.exchange_rates_publication_validity_description(),
 					fieldProps: {
 						inputMode: "numeric",
 						min: 1,
