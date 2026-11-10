@@ -31,7 +31,7 @@
         "@tanstack/react-table": "^8.21.3",
         "@tanstack/store": "^0.11.1",
         "@tma.js/sdk": "^3.3.0",
-        "@visulima/email": "^2.1.7",
+        "@visulima/email": "^4.2.0",
         "better-auth": "^1.7.6",
         "better-auth-telegram": "1.5.0",
         "bowser": "^2.14.1",
@@ -1033,7 +1033,7 @@
 
     "@ungap/structured-clone": ["@ungap/structured-clone@1.3.3", "", {}, "sha512-60YRaenCQcVjYEKOcG824+DRGGIQ3VKErcBoAEDJZz5bKIs2ZG+X/H9Nk+Q6EVkwJk5QNApxbrc5QtBSwtrXAg=="],
 
-    "@visulima/email": ["@visulima/email@2.1.7", "", { "dependencies": { "html-to-text": "^10.0.0", "ical-generator": "11.0.0", "lru-cache": "11.5.1", "mime": "^4.1.0" }, "peerDependencies": { "@opentelemetry/api": "^1.0.0 || ^2.0.0", "@react-email/render": "^2.0.10", "@vue-email/render": "0.0.9", "asn1js": ">=3.0.10", "fast-xml-parser": "^4.5.0", "handlebars": ">=4.7.9", "jsx-email": "^2.0.0", "juice": "^11.0.0", "liquidjs": "^10.0.0", "mjml": ">=5.4.0", "nodemailer": ">=7", "pkijs": ">=3.4.0", "unstorage": "^1.13.0" }, "optionalPeers": ["@opentelemetry/api", "@react-email/render", "@vue-email/render", "asn1js", "fast-xml-parser", "handlebars", "jsx-email", "juice", "liquidjs", "mjml", "nodemailer", "pkijs", "unstorage"] }, "sha512-eo8Kn50zF5bL6RAQcqoVLhQmInqvu3jQOf0yrRQN2I0slvLI4SySUtwQRtF/+SqYQL48c1MWUXG3XAKisax/8Q=="],
+    "@visulima/email": ["@visulima/email@4.2.0", "", { "dependencies": { "html-to-text": "^10.0.0", "ical-generator": "11.1.0", "lru-cache": "11.5.3", "mime": "^4.1.0" }, "peerDependencies": { "@opentelemetry/api": "^1.0.0 || ^2.0.0", "@react-email/render": "^2.1.0", "@vue-email/render": "0.0.9", "asn1js": ">=3.0.10", "fast-xml-parser": "^4.5.0 || ^5.0.0", "handlebars": ">=4.7.10", "jsx-email": "^2.0.0", "juice": "^11.0.0 || ^12.0.0", "liquidjs": "^10.0.0", "mjml": ">=5.4.0", "nodemailer": ">=7", "pkijs": ">=3.4.0", "unstorage": "^1.13.0" }, "optionalPeers": ["@opentelemetry/api", "@react-email/render", "@vue-email/render", "asn1js", "fast-xml-parser", "handlebars", "jsx-email", "juice", "liquidjs", "mjml", "nodemailer", "pkijs", "unstorage"] }, "sha512-5Vbpe5C2J+X2eDi7vt7CZ2xJRU3AjY3RtlZ8cxgzrzjn/uww/ziqlcazbeLiH4AL7/7l7MXtG6RTBW2I8JyCTA=="],
 
     "@vitejs/plugin-react": ["@vitejs/plugin-react@6.1.1", "", { "dependencies": { "@rolldown/pluginutils": "^1.0.1" }, "peerDependencies": { "@rolldown/plugin-babel": "^0.1.7 || ^0.2.0", "babel-plugin-react-compiler": "^1.0.0", "oxc-transform-react": "^0.145.0", "vite": "^8.0.0" }, "optionalPeers": ["@rolldown/plugin-babel", "babel-plugin-react-compiler", "oxc-transform-react"] }, "sha512-yxLaQV9gkhS8ezJqCM6+ndU7mDY6gqAg75NQ+0IjwEI8IYOmQCgkRwHKVSfWXW076DsqMo0Dk+0FK1U+M5RgFw=="],
 
@@ -1443,7 +1443,7 @@
 
     "human-signals": ["human-signals@8.0.1", "", {}, "sha512-eKCa6bwnJhvxj14kZk5NCPc6Hb6BdsU9DZcOnmQKSnO1VKrfV0zCvtttPZUsBvjmNDn8rpcJfpwSYnHBjc95MQ=="],
 
-    "ical-generator": ["ical-generator@11.0.0", "", { "peerDependencies": { "@touch4it/ical-timezones": ">=1.6.0", "@types/luxon": ">= 1.26.0", "@types/mocha": ">= 8.2.1", "@types/node": "*", "dayjs": ">= 1.10.0", "luxon": ">= 1.26.0", "moment": ">= 2.29.0", "moment-timezone": ">= 0.5.33", "rrule": ">= 2.6.8" }, "optionalPeers": ["@touch4it/ical-timezones", "@types/luxon", "@types/mocha", "@types/node", "dayjs", "luxon", "moment", "moment-timezone", "rrule"] }, "sha512-OScZbXduIbjqtJzq0WLyPpAuKnc106+l28wszD+Wi2O9jXn76NVBfr4Ksv2XFyQn4JNZ9vWr5xAac0uT/FhVag=="],
+    "ical-generator": ["ical-generator@11.1.0", "", { "peerDependencies": { "@touch4it/ical-timezones": ">=1.6.0", "@types/luxon": ">= 1.26.0", "@types/mocha": ">= 8.2.1", "@types/node": "*", "dayjs": ">= 1.10.0", "luxon": ">= 1.26.0", "moment": ">= 2.29.0", "moment-timezone": ">= 0.5.33", "rrule": ">= 2.6.8" }, "optionalPeers": ["@touch4it/ical-timezones", "@types/luxon", "@types/mocha", "@types/node", "dayjs", "luxon", "moment", "moment-timezone", "rrule"] }, "sha512-/CSyXcelySK5qYAUxXnwzhAi1UPVnapnVMXqkRQ+L0RXHCFtzqLm92o5PD0ZRhaWBCtkS0hP8YIxMrSRZ+8Zug=="],
 
     "immer": ["immer@11.1.11", "", {}, "sha512-qzXuyXAkPySAGYkfsAwodDPWT8Zm7/Uo5BNt4BjhMhG5WlWyZZ4wQqnWwdS8kjlQ1Cwu6gjw3A6+0gTQwlyYtw=="],
 
@@ -2507,7 +2507,7 @@
 
     "@tanstack/start-plugin-core/srvx": ["srvx@0.11.22", "", { "bin": { "srvx": "bin/srvx.mjs" } }, "sha512-LqZxxBDMKuMAZzFzJnDCkFOrs9MZQZr0LvHiO/SuSZVdQaXD7xQ5UWTUxheJrQPve1qk9MG2B/yttUvJxw8egQ=="],
 
-    "@visulima/email/lru-cache": ["lru-cache@11.5.1", "", {}, "sha512-RPimw/7aMdv2oqRrxKwvZXcPfwBrn/JZ2xYcY9Hus/6LaS3VOAKVWKWgNLCFSiOm1ESXinjsDlidVU7JlnCN2A=="],
+    "@visulima/email/lru-cache": ["lru-cache@11.5.3", "", {}, "sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg=="],
 
     "@vitest/mocker/@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
