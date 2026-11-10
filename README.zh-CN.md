@@ -41,7 +41,12 @@ GMShop Edge 是可部署到 Cloudflare Workers 或 Bun/Nitro Docker 容器的自
   五种 Provider，并另接 Cloudflare 原生 Send Email binding；邮件模板负责内容，
   邮件记录保存投递状态，Queue/Cron 执行有界重试。
 - 由商城在 D1 维护法币汇率，将同一份不可变报价交给 Stripe、GMpay、EPay 或其他
-  类型化适配器。
+  类型化适配器。汇率可从 exchangerate.host（需要 API Key，默认）或无需密钥的
+  AllRatesToday（约 30 种欧洲央行参考汇率货币，每个工作日发布一次）刷新。
+  AllRatesToday 的汇率行以服务商发布时间作为观测时间，并在其后管理员配置的
+  时长内可报价（1 至 168 小时，默认严格 24 小时），因此按默认值在周末和节假日
+  不可报价；在设置未变的情况下重复抓取未变化的发布不会延长有效期；保存更短的时长会立即作用于已存储的汇率行，无需服务商响应。开放接口允许商业使用，仅在
+  公开展示汇率的页面上需要来源标注（https://allratestoday.com/terms/#attribution）。
 - 通过 Better Auth 在运行时配置邮箱密码、社交、OIDC 和 Telegram 认证 Provider，
   无需重新构建 Worker。Telegram Web 登录同时支持 OIDC code 回调和经过服务端验签的
   `#tgAuthResult` Widget 兜底，并分别保存 OIDC Client Secret 与 Bot Token。
