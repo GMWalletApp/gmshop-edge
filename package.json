@@ -2,7 +2,7 @@
   "name": "gmshop-edge",
   "version": "1.0.4",
   "private": true,
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "engines": {
     "bun": ">=1.4.2"

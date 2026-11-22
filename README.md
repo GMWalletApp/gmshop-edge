@@ -4,7 +4,7 @@
 
 [简体中文](README.zh-CN.md) · English
 
-[![License: GM Wallet Community License 2.2](https://img.shields.io/badge/license-GM_Wallet_Community_2.2-3DA639.svg?style=flat-square)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-3DA639.svg?style=flat-square)](LICENSE)
 [![Runtimes: Workers + Bun](https://img.shields.io/badge/runtimes-Workers%20%2B%20Bun-F38020.svg?style=flat-square)](#architecture)
 [![Bun](https://img.shields.io/badge/toolchain-Bun-000000.svg?style=flat-square&logo=bun&logoColor=white)](https://bun.sh/)
 [![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -70,7 +70,7 @@ fulfillment, and a permission-driven administration console.
 - Persist each user's preferred language for account and transactional email;
   guest orders retain the checkout locale as a notification fallback.
 
-The published source includes every GMShop Edge capability listed above. The same features are available under the community and commercial licensing terms.
+The published source includes every GMShop Edge capability listed above.
 
 ## Architecture
 
@@ -438,6 +438,4 @@ instance. Its machine-readable source is [OpenAPI YAML](public/openapi.yaml).
 
 ## License
 
-GMShop Edge is licensed under [GM Wallet Community License 2.2](LICENSE).
-
-Companies whose worldwide revenue with affiliates strictly exceeds USD 1,000,000 over the preceding 12 months need a paid license, including loss-making groups. Under the community terms, release, delivery or operational deployment of a modified version requires free public access to its exact corresponding source, prominent attribution and an original-project link. For each such version, including SaaS deployments, submit the exact revision upstream by pull request or a branch as described in section 13. GM Wallet decides whether to merge it. Separate written commercial terms may apply. [License](LICENSE) · [info@gmwallet.app](mailto:info@gmwallet.app)
+GMShop Edge is licensed under [AGPL-3.0](LICENSE).
