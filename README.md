@@ -4,7 +4,7 @@
 
 [简体中文](README.zh-CN.md) · English
 
-[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-3DA639.svg?style=flat-square)](LICENSE)
+[![License: GM Wallet Community License 2.0](https://img.shields.io/badge/license-GM_Wallet_Community_2.0-3DA639.svg?style=flat-square)](LICENSE)
 [![Runtimes: Workers + Bun](https://img.shields.io/badge/runtimes-Workers%20%2B%20Bun-F38020.svg?style=flat-square)](#architecture)
 [![Bun](https://img.shields.io/badge/toolchain-Bun-000000.svg?style=flat-square&logo=bun&logoColor=white)](https://bun.sh/)
 [![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -70,8 +70,7 @@ fulfillment, and a permission-driven administration console.
 - Persist each user's preferred language for account and transactional email;
   guest orders retain the checkout locale as a notification fallback.
 
-Every GMShop Edge capability listed above is part of the open-source project;
-there is no closed Pro or Enterprise tier.
+The published source includes every GMShop Edge capability listed above. The same features are available under the community and commercial licensing terms.
 
 ## Architecture
 
@@ -439,4 +438,6 @@ instance. Its machine-readable source is [OpenAPI YAML](public/openapi.yaml).
 
 ## License
 
-GMShop Edge is licensed under [GPL-3.0-or-later](LICENSE).
+GMShop Edge is licensed under [GM Wallet Community License 2.0](LICENSE).
+
+Companies whose worldwide revenue with affiliates strictly exceeds USD 1,000,000 over the preceding 12 months need a paid license, including loss-making groups. Under the community terms, release, delivery or operational deployment of a modified version requires free public access to its exact corresponding source, prominent attribution and an original-project link. Separate written commercial terms may apply. [License](LICENSE) · [Contributor terms](CONTRIBUTING.md) · [info@gmwallet.app](mailto:info@gmwallet.app)

@@ -74,7 +74,7 @@ jobs:
             echo "org.opencontainers.image.version=${version}"
             echo "org.opencontainers.image.created=${created}"
             echo 'org.opencontainers.image.description=Single-tenant digital-goods store for Cloudflare Workers and Bun'
-            echo 'org.opencontainers.image.licenses=GPL-3.0-or-later'
+            echo 'org.opencontainers.image.licenses=LicenseRef-GM-Wallet-Community-2.0'
             echo 'EOF'
           } >>"${GITHUB_OUTPUT}"
 
