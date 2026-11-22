@@ -4,7 +4,7 @@
 
 简体中文 · [English](README.md)
 
-[![许可证：GM Wallet Community License 2.2](https://img.shields.io/badge/license-GM_Wallet_Community_2.2-3DA639.svg?style=flat-square)](LICENSE)
+[![许可证：AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-3DA639.svg?style=flat-square)](LICENSE)
 [![运行时：Workers + Bun](https://img.shields.io/badge/runtimes-Workers%20%2B%20Bun-F38020.svg?style=flat-square)](#系统架构)
 [![Bun](https://img.shields.io/badge/toolchain-Bun-000000.svg?style=flat-square&logo=bun&logoColor=white)](https://bun.sh/)
 [![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -57,7 +57,7 @@ GMShop Edge 是可部署到 Cloudflare Workers 或 Bun/Nitro Docker 容器的自
   界面语言。
 - 持久化用户偏好语言，用于账户和交易邮件；游客订单以结算语言快照作为通知回退。
 
-GMShop Edge 公布了上述全部功能的源码。社区许可与商业许可提供相同的功能。
+GMShop Edge 公布了上述全部功能的源码。
 
 ## 系统架构
 
@@ -373,6 +373,4 @@ bun run build:bun
 
 ## 许可证
 
-GMShop Edge 使用 [GM Wallet Community License 2.2](LICENSE) 许可证。
-
-公司及其关联实体过去 12 个月的全球合计收入严格超过 100 万美元，即使亏损也须购买许可。按社区条款，修改版在发布、交付或上线运行时须免费向公众提供该版本的完整对应源码，显著保留指定署名及原项目链接。每个修改版本（包括 SaaS 上线版本）还须按第 13 节通过 PR 或分支将该版本的实际修改提交给原项目，并注明提交号。GM Wallet 自行决定是否合并。另行签署的商业合同可约定不同条款。 [许可](LICENSE) · [info@gmwallet.app](mailto:info@gmwallet.app)
+GMShop Edge 使用 [AGPL-3.0](LICENSE) 许可证。
