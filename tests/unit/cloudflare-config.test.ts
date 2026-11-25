@@ -65,6 +65,10 @@ const databaseMarker = join(process.cwd(), ".database-exists");
 const bucketMarker = join(process.cwd(), ".bucket-exists");
 const cacheMarker = join(process.cwd(), ".cache-exists");
 const queueMarker = join(process.cwd(), "." + (args[2] ?? "queue") + "-exists");
+if (tool === "wrangler" && args[0] === "kv" && args[1] === "namespace" && args[2] === "list" && process.env.DELAY_KV === "1") {
+	await new Promise((resolve) => setTimeout(resolve, 200));
+	writeFileSync(join(process.cwd(), "delayed-resource-finished"), "done");
+}
 if (tool === "wrangler" && args[0] === "d1" && args[1] === "info") {
 	if (process.env.MISSING_D1 === "1" && !existsSync(databaseMarker)) process.exit(1);
 	console.log(process.env.INVALID_D1 === "1" ? JSON.stringify({ uuid: "invalid" }) : JSON.stringify({ uuid: "01234567-89ab-4def-8123-456789abcdef" }));
@@ -269,6 +273,24 @@ if (tool === "vite" && process.env.WORKERS_CI === "1") {
 				WORKERS_CI: "1",
 			}),
 		).not.toBe(0);
+	});
+
+	it("waits for sibling resource commands before reporting provisioning failure", async () => {
+		try {
+			expect(
+				await runFixture(fixtureDirectory, {
+					INVALID_D1: "1",
+					DELAY_KV: "1",
+					WORKERS_CI: "1",
+				}),
+			).not.toBe(0);
+			await expect(
+				readFile(join(fixtureDirectory, "delayed-resource-finished"), "utf8"),
+			).resolves.toBe("done");
+		} finally {
+			// Also reap the delayed fake command when checking the unfixed script.
+			await new Promise((resolve) => setTimeout(resolve, 250));
+		}
 	});
 
 	it("rejects a generated config without the required bindings", async () => {

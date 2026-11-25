@@ -240,7 +240,7 @@ async function buildForWorkers(): Promise<void> {
 		]),
 	];
 
-	const [databaseId, cacheId] = await Promise.all([
+	const resourceTasks = [
 		ensureD1Database(databaseName),
 		ensureKvNamespace(cacheName),
 		...bucketNames.map((name) =>
@@ -252,7 +252,14 @@ async function buildForWorkers(): Promise<void> {
 		...[...new Set(queueNames)].map((name) =>
 			ensureNamedResource(["queues", "info", name], ["queues", "create", name]),
 		),
-	]);
+	] as const;
+	const [databaseId, cacheId] = await Promise.all(resourceTasks).catch(
+		async (error: unknown) => {
+			// Do not leave sibling Wrangler processes running after a failed check.
+			await Promise.allSettled(resourceTasks);
+			throw error;
+		},
+	);
 	await run("wrangler", [
 		"d1",
 		"migrations",

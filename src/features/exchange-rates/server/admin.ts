@@ -6,6 +6,11 @@ import {
 	exchangeRatePattern,
 } from "#/features/exchange-rates/rates";
 import {
+	ALLRATESTODAY_DEFAULT_VALIDITY_MS,
+	allRatesTodayValiditySchema,
+	capAllRatesTodayExpiryStatement,
+	exchangeRateProviderRequiresApiKey,
+	exchangeRateProviders,
 	exchangeRateSyncSettingKeys,
 	loadExchangeRateSyncCredential,
 	loadExchangeRateSyncSettings,
@@ -51,9 +56,15 @@ const deleteSchema = z.object({ id: idSchema });
 const enabledSchema = z.object({ id: idSchema, enabled: z.boolean() });
 const reorderSchema = z.object({ ids: z.array(idSchema).min(1).max(500) });
 const syncSettingsSchema = z.object({
+	provider: z.enum(exchangeRateProviders).default("exchangerate_host"),
 	enabled: z.boolean(),
 	intervalMs: z.number().int().min(300_000).max(2_592_000_000),
 	adjustmentBps: z.number().int().min(-9_999).max(100_000),
+	// AllRatesToday validity from the publication time, 1h..7d (default 24h);
+	// ignored by exchangerate.host. Out-of-range values are rejected here.
+	publicationValidityMs: allRatesTodayValiditySchema.default(
+		ALLRATESTODAY_DEFAULT_VALIDITY_MS,
+	),
 	apiKey: z.string().trim().max(512).optional(),
 });
 
@@ -132,7 +143,11 @@ export const saveExchangeRateSyncSettingsFn = createServerFn({ method: "POST" })
 					"exchange-rate-provider",
 				)
 			: existingApiKey;
-		if (data.enabled && !apiKeyEncrypted)
+		if (
+			data.enabled &&
+			exchangeRateProviderRequiresApiKey(data.provider) &&
+			!apiKeyEncrypted
+		)
 			throw new DomainError(
 				"exchange_rate_sync_credentials_required",
 				409,
@@ -152,10 +167,11 @@ export const saveExchangeRateSyncSettingsFn = createServerFn({ method: "POST" })
 				.bind(
 					exchangeRateSyncSettingKeys.config,
 					JSON.stringify({
-						provider: "exchangerate_host",
+						provider: data.provider,
 						enabled: data.enabled,
 						intervalMs: data.intervalMs,
 						adjustmentBps: data.adjustmentBps,
+						publicationValidityMs: data.publicationValidityMs,
 					}),
 					context.currentUser.id,
 					now,
@@ -181,6 +197,11 @@ export const saveExchangeRateSyncSettingsFn = createServerFn({ method: "POST" })
 							),
 					]
 				: []),
+			capAllRatesTodayExpiryStatement(
+				context.db,
+				data.publicationValidityMs,
+				now,
+			),
 			createAuditStatement(
 				context.db,
 				context.request,
@@ -190,15 +211,19 @@ export const saveExchangeRateSyncSettingsFn = createServerFn({ method: "POST" })
 					targetType: "exchange_rate_sync",
 					targetId: "fiat",
 					before: {
+						provider: before.provider,
 						enabled: before.enabled,
 						intervalMs: before.intervalMs,
 						adjustmentBps: before.adjustmentBps,
+						publicationValidityMs: before.publicationValidityMs,
 						hasApiKey: before.hasApiKey,
 					},
 					after: {
+						provider: data.provider,
 						enabled: data.enabled,
 						intervalMs: data.intervalMs,
 						adjustmentBps: data.adjustmentBps,
+						publicationValidityMs: data.publicationValidityMs,
 						hasApiKey: Boolean(apiKeyEncrypted),
 						credentialsChanged: Boolean(apiKey),
 					},

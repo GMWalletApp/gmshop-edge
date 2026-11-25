@@ -1,5 +1,14 @@
 import { Miniflare } from "miniflare";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import { authenticateSupplierApi } from "#/features/supplier-api/server/auth";
 import { signGmshopEdgeRequest } from "#/features/suppliers/providers/signatures";
 import { encryptSecret } from "#/lib/secrets";
@@ -8,7 +17,6 @@ import {
 	createInitialRuntimeConfig,
 	runtimeConfigEntries,
 } from "#/server/runtime-config";
-import { awaitFreshRateLimitWindow } from "../helpers/rate-limit-window";
 import { applyMigrations } from "./migrations";
 
 const apiKeyId = "gme_supplier_api_auth_fixture";
@@ -69,6 +77,17 @@ describe("supplier API authentication", () => {
 				.bind(keyRowId, apiKeyId, encrypted, now, now),
 		]);
 	});
+
+	beforeEach(async () => {
+		// Keep signatures and all quota claims in one window, even near its end.
+		vi.spyOn(Date, "now").mockReturnValue(now - (now % 60_000) + 52_000);
+		nonceSequence = 0;
+		await db.batch([
+			db.prepare("DELETE FROM rate_limit_counters"),
+			db.prepare("DELETE FROM replay_receipts"),
+		]);
+	});
+	afterEach(() => vi.restoreAllMocks());
 
 	afterAll(async () => miniflare.dispose());
 
@@ -143,7 +162,6 @@ describe("supplier API authentication", () => {
 	});
 
 	it("refuses a flood of forged requests from one client before doing signature work", async () => {
-		await awaitFreshRateLimitWindow();
 		const forger = "203.0.113.9";
 		for (let index = 0; index < 60; index += 1)
 			await expect(
@@ -197,15 +215,15 @@ describe("supplier API authentication", () => {
 			allowedCallbackOrigin: null,
 		});
 		expect(await budgets()).toMatchObject({
-			[`supplier-api:key:${keyRowId}`]: 2,
-			"supplier-api:user:api-user": 2,
+			[`supplier-api:key:${keyRowId}`]: 1,
+			"supplier-api:user:api-user": 1,
 		});
 		await expect(
 			authenticateSupplierApi(signedRequest({ nonce }), db, ""),
 		).rejects.toMatchObject({ code: "supplier_replay", status: 409 });
 		expect(await budgets()).toMatchObject({
-			[`supplier-api:key:${keyRowId}`]: 3,
-			"supplier-api:user:api-user": 3,
+			[`supplier-api:key:${keyRowId}`]: 2,
+			"supplier-api:user:api-user": 2,
 		});
 	});
 });

@@ -51,6 +51,16 @@ fulfillment, and a permission-driven administration console.
   Queue/Cron provides bounded retries.
 - Quote customer-selected fiat currencies from store-owned D1 exchange rates and
   pass one immutable quote to Stripe, GMpay, EPay, or another typed adapter.
+  Rates refresh from exchangerate.host (API key, default) or the keyless
+  AllRatesToday feed (about 30 ECB reference-rate currencies, published once
+  per business day). AllRatesToday rows are observed at the provider's
+  publication time and stay quotable for an administrator-configured duration
+  after it (1 to 168 hours, default a strict 24 hours), so at the default they
+  are not quotable over weekends and holidays; re-fetching an unchanged
+  publication with unchanged settings never extends validity, and saving a shorter duration applies to
+  stored rows at once, without a provider response. Commercial use of the open endpoint is
+  allowed and attribution is only required on public pages that display the
+  rates (https://allratestoday.com/terms/#attribution).
 - Configure email/password, social, OIDC, and Telegram authentication providers
   at runtime through Better Auth without rebuilding the Worker. Telegram web
   login supports both OIDC code callbacks and verified `#tgAuthResult` Widget

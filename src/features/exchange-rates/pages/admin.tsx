@@ -248,6 +248,25 @@ export function ExchangeRatesTable({
 			{syncStatus ? (
 				<p className="text-muted-foreground text-xs">{syncStatus}</p>
 			) : null}
+			{syncSettings.data?.provider === "allratestoday" ? (
+				// Availability tradeoff of the daily feed, plus the provider's
+				// terms: commercial use is allowed; visible attribution is
+				// required only on public pages that display these rates. The cap
+				// keeps it inside the phone viewport, where the settings pane clips.
+				<p className="max-w-[calc(100vw-3.5rem)] text-muted-foreground text-xs md:max-w-none">
+					{m.exchange_rates_allratestoday_notice({
+						hours: String(syncSettings.data.publicationValidityMs / 3_600_000),
+					})}{" "}
+					<a
+						href="https://allratestoday.com/terms/#attribution"
+						target="_blank"
+						rel="noreferrer"
+						className="underline underline-offset-2"
+					>
+						{m.exchange_rates_allratestoday_terms()}
+					</a>
+				</p>
+			) : null}
 			<ProTable
 				className="min-h-0 flex-1"
 				columns={columns}
@@ -350,9 +369,11 @@ function RateSyncSettingsForm({
 	pending: boolean;
 	syncing: boolean;
 	onSave: (data: {
+		provider: SyncSettings["provider"];
 		enabled: boolean;
 		intervalMs: number;
 		adjustmentBps: number;
+		publicationValidityMs: number;
 		apiKey?: string;
 	}) => Promise<unknown>;
 	onSync: () => Promise<unknown>;
@@ -381,12 +402,15 @@ function RateSyncSettingsForm({
 					label: m.exchange_rates_source(),
 					valueType: "select",
 					required: true,
-					disabled: true,
 					fieldProps: {
 						options: [
 							{
 								label: "exchangerate.host",
 								value: "exchangerate_host",
+							},
+							{
+								label: "AllRatesToday",
+								value: "allratestoday",
 							},
 						],
 					},
@@ -395,12 +419,27 @@ function RateSyncSettingsForm({
 					name: "apiKey",
 					label: m.exchange_rates_api_key(),
 					valueType: "password",
+					hidden: (values) => values.provider === "allratestoday",
 					required: !settings?.hasApiKey,
 					tooltip: m.exchange_rates_api_key_tooltip(),
 					fieldProps: {
 						placeholder: settings?.hasApiKey
 							? m.settings_secret_configured()
 							: undefined,
+					},
+				},
+				{
+					name: "publicationValidityHours",
+					label: m.exchange_rates_publication_validity(),
+					hidden: (values) => values.provider !== "allratestoday",
+					required: true,
+					extra: m.exchange_rates_publication_validity_description(),
+					fieldProps: {
+						inputMode: "numeric",
+						min: 1,
+						max: 168,
+						step: 1,
+						suffix: m.catalog_duration_hours(),
 					},
 				},
 				{
@@ -430,9 +469,11 @@ function RateSyncSettingsForm({
 			]}
 			initialValues={{
 				enabled: settings?.enabled ?? false,
-				provider: "exchangerate_host",
+				provider: settings?.provider ?? "exchangerate_host",
 				intervalMinutes: (settings?.intervalMs ?? 86_400_000) / 60_000,
 				adjustmentBps: settings?.adjustmentBps ?? 0,
+				publicationValidityHours:
+					(settings?.publicationValidityMs ?? 86_400_000) / 3_600_000,
 			}}
 			submitter={({ submitting }) => (
 				<>
@@ -463,9 +504,15 @@ function RateSyncSettingsForm({
 			onFinish={async (values) => {
 				try {
 					await onSave({
+						provider:
+							values.provider === "allratestoday"
+								? "allratestoday"
+								: "exchangerate_host",
 						enabled: formBooleanValue(values.enabled),
 						intervalMs: Number(values.intervalMinutes ?? 1_440) * 60_000,
 						adjustmentBps: Number(values.adjustmentBps ?? 0),
+						publicationValidityMs:
+							Number(values.publicationValidityHours ?? 24) * 3_600_000,
 						...(String(values.apiKey ?? "").trim()
 							? { apiKey: String(values.apiKey).trim() }
 							: {}),
@@ -482,7 +529,8 @@ function RateSyncSettingsForm({
 
 function syncStatusText(settings: SyncSettings | undefined) {
 	if (!settings) return m.exchange_rates_sync_status_loading();
-	if (!settings.hasApiKey) return null;
+	if (settings.provider === "exchangerate_host" && !settings.hasApiKey)
+		return null;
 	if (settings.lastStatus === "failed")
 		return m.exchange_rates_sync_status_failed();
 	if (settings.lastSyncedAt)
